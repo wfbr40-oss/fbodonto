@@ -11,19 +11,17 @@ create table if not exists public.lotes (
 -- Habilitar RLS (Row Level Security)
 alter table public.lotes enable row level security;
 
--- Políticas de acesso para lotes
-create policy "Permitir leitura pública de lotes"
+-- Políticas de acesso para lotes (permitindo inserção e leitura públicas para facilitar o uso no consultório)
+create policy "Permitir leitura de lotes"
   on public.lotes for select
   using (true);
 
-create policy "Permitir inserção apenas para usuários autenticados"
+create policy "Permitir inserção de lotes"
   on public.lotes for insert
-  to authenticated
   with check (true);
 
-create policy "Permitir atualização apenas para usuários autenticados"
+create policy "Permitir atualização de lotes"
   on public.lotes for update
-  to authenticated
   using (true);
 
 -- Sem política de delete (proibido exclusão)
@@ -37,7 +35,6 @@ create policy "Permitir leitura pública de arquivos de config"
   on storage.objects for select
   using (bucket_id = 'config');
 
-create policy "Permitir upload de config apenas para autenticados"
+create policy "Permitir upload de config"
   on storage.objects for insert
-  to authenticated
   with check (bucket_id = 'config');
