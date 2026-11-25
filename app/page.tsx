@@ -12,7 +12,7 @@ export default function CadastroPage() {
   const [autenticado, setAutenticado] = useState<boolean>(false);
   const [carregandoAuth, setCarregandoAuth] = useState<boolean>(true);
   
-  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');
   const [erroLogin, setErroLogin] = useState('');
 
@@ -69,7 +69,7 @@ export default function CadastroPage() {
     e.preventDefault();
     setErroLogin('');
     try {
-      await login(email, senha);
+      await login(usuario, senha);
       setAutenticado(true);
       carregarDadosHistorico();
     } catch (err: any) {
@@ -151,14 +151,14 @@ export default function CadastroPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">E-mail</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Usuário</label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
                 required
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
-                placeholder="dentista@consultorio.com"
+                placeholder="Ex: admin ou dentista"
               />
             </div>
 

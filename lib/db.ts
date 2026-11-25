@@ -132,18 +132,23 @@ export async function listarRecentes(): Promise<Lote[]> {
   }
 }
 
-export async function login(email: string, senha: string): Promise<void> {
-  if (!isSupabaseConfigured) {
-    if (email && senha) {
-      localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ email }));
-      return;
-    }
-    throw new Error("Preencha e-mail e senha.");
+export async function login(usuario: string, senha: string): Promise<void> {
+  const usuarioLimpo = usuario.trim().toLowerCase();
+  if (!usuarioLimpo || !senha) {
+    throw new Error("Preencha usuário e senha.");
   }
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+  if (!isSupabaseConfigured) {
+    localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: usuarioLimpo }));
+    return;
+  }
+
+  // Mapear usuário para email interno do Supabase Auth se não tiver '@'
+  const emailAuth = usuarioLimpo.includes('@') ? usuarioLimpo : `${usuarioLimpo}@fbodonto.local`;
+
+  const { error } = await supabase.auth.signInWithPassword({ email: emailAuth, password: senha });
   if (error) {
-    throw new Error(error.message || "Erro ao fazer login.");
+    throw new Error("Usuário ou senha inválidos.");
   }
 }
 
