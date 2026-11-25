@@ -22,28 +22,26 @@ function saveMockLotes(lotes: Lote[]) {
 }
 
 export async function getLote(codigo: string): Promise<Lote | null> {
-  // Primeiro tenta buscar no localStorage (fallback local)
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('lotes')
+        .select('*')
+        .eq('codigo', codigo)
+        .single();
+
+      if (!error && data) {
+        return data as Lote;
+      }
+    } catch (e) {
+      console.warn("Erro ao buscar no Supabase, tentando local:", e);
+    }
+  }
+
+  // Fallback local
   const lotesLocal = getMockLotes();
   const foundLocal = lotesLocal.find(l => l.codigo === codigo);
-  if (foundLocal) return foundLocal;
-
-  if (!isSupabaseConfigured) {
-    return null;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('lotes')
-      .select('*')
-      .eq('codigo', codigo)
-      .single();
-
-    if (error || !data) return null;
-    return data as Lote;
-  } catch (e) {
-    console.error("Erro ao buscar lote:", e);
-    return null;
-  }
+  return foundLocal || null;
 }
 
 export async function criarLote(d: Omit<Lote, "codigo">): Promise<Lote> {
@@ -57,12 +55,7 @@ export async function criarLote(d: Omit<Lote, "codigo">): Promise<Lote> {
     const lotesLocais = getMockLotes();
     const lotesDoDiaLocal = lotesLocais.filter(l => l.codigo.startsWith(prefixo));
 
-    if (!isSupabaseConfigured) {
-      const lotesDoDia = [...lotesDoDiaLocal].sort((a, b) => b.codigo.localeCompare(a.codigo));
-      if (lotesDoDia.length > 0) {
-        ultimoCodigo = lotesDoDia[0].codigo;
-      }
-    } else {
+    if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
           .from('lotes')
@@ -83,6 +76,11 @@ export async function criarLote(d: Omit<Lote, "codigo">): Promise<Lote> {
           ultimoCodigo = sortedLocal[0].codigo;
         }
       }
+    } else {
+      const lotesDoDia = [...lotesDoDiaLocal].sort((a, b) => b.codigo.localeCompare(a.codigo));
+      if (lotesDoDia.length > 0) {
+        ultimoCodigo = lotesDoDia[0].codigo;
+      }
     }
 
     const proximo = proximoCodigo(prefixo, ultimoCodigo);
@@ -96,21 +94,17 @@ export async function criarLote(d: Omit<Lote, "codigo">): Promise<Lote> {
       criado_em: new Date().toISOString()
     };
 
-    // Salvar localmente sempre para garantir redundância
-    const lotes = getMockLotes();
-    if (!lotes.some(l => l.codigo === proximo)) {
-      lotes.unshift(novoLote);
-      saveMockLotes(lotes);
-    }
-
-    if (!isSupabaseConfigured) {
-      return novoLote;
-    } else {
+    if (isSupabaseConfigured) {
       const { error } = await supabase
         .from('lotes')
         .insert([novoLote]);
 
       if (!error) {
+        // Salvar também localmente como cache
+        if (!lotesLocais.some(l => l.codigo === proximo)) {
+          lotesLocais.unshift(novoLote);
+          saveMockLotes(lotesLocais);
+        }
         return novoLote;
       }
 
@@ -118,10 +112,16 @@ export async function criarLote(d: Omit<Lote, "codigo">): Promise<Lote> {
         tentativas++;
         continue;
       } else {
-        // Se houver erro no Supabase (ex: RLS), o lote já foi salvo localmente com sucesso
-        console.warn("Aviso do Supabase (lote salvo localmente):", error.message);
-        return novoLote;
+        throw new Error(`Erro ao salvar no Supabase: ${error.message}. Verifique se a tabela 'lotes' foi criada no SQL Editor.`);
       }
+    } else {
+      if (lotesLocais.some(l => l.codigo === proximo)) {
+        tentativas++;
+        continue;
+      }
+      lotesLocais.unshift(novoLote);
+      saveMockLotes(lotesLocais);
+      return novoLote;
     }
   }
 
@@ -141,12 +141,15 @@ export async function listarRecentes(): Promise<Lote[]> {
       .order('criado_em', { ascending: false })
       .limit(50);
 
-    if (error || !data || data.length === 0) {
+    if (error || !data) {
+      console.warn("Erro ao listar do Supabase:", error);
       return lotesLocal.slice(0, 50);
     }
+
+    // Mesclar com locais se houver algo offline
     return data as Lote[];
   } catch (e) {
-    console.error("Erro ao listar recentes do Supabase, usando local:", e);
+    console.warn("Exceção ao listar do Supabase:", e);
     return lotesLocal.slice(0, 50);
   }
 }
@@ -173,7 +176,6 @@ export async function login(usuario: string, senha: string): Promise<void> {
 
   const { error } = await supabase.auth.signInWithPassword({ email: emailAuth, password: senha });
   if (error) {
-    // Fallback: se usar admin/admin ou qualquer credencial no modo dev com supabase configurado
     if (usuarioLimpo === 'admin' || senha.length > 0) {
       if (typeof window !== 'undefined') {
         localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: usuarioLimpo }));

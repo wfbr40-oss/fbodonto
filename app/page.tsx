@@ -276,18 +276,12 @@ export default function CadastroPage() {
                   </label>
                   <input
                     type="text"
-                    list="itens-sugestoes"
                     value={item}
                     onChange={(e) => setItem(e.target.value)}
                     required
                     placeholder="Ex: Kit Clínico Cirúrgico 01"
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
                   />
-                  <datalist id="itens-sugestoes">
-                    {itensSugeridos.map((it, idx) => (
-                      <option key={idx} value={it} />
-                    ))}
-                  </datalist>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -359,18 +353,12 @@ export default function CadastroPage() {
                   </label>
                   <input
                     type="text"
-                    list="resp-sugestoes"
                     value={responsavel}
                     onChange={(e) => setResponsavel(e.target.value)}
                     required
                     placeholder="Nome do profissional"
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
                   />
-                  <datalist id="resp-sugestoes">
-                    {responsaveisSugeridos.map((resp, idx) => (
-                      <option key={idx} value={resp} />
-                    ))}
-                  </datalist>
                 </div>
 
                 {erroCadastro && (
