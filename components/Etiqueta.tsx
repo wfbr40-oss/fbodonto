@@ -28,7 +28,10 @@ export default function Etiqueta({ lote, larguraMm = 50, alturaMm = 30 }: Etique
         height: `${alturaMm}mm`,
       }}
     >
-      <div className="flex-shrink-0 flex items-center justify-center mr-1" style={{ width: `${Math.max(15, alturaMm - 6)}mm`, height: `${Math.max(15, alturaMm - 6)}mm` }}>
+      <div 
+        className="flex-shrink-0 flex items-center justify-center mr-1" 
+        style={{ width: `${Math.max(14, alturaMm - 6)}mm`, height: `${Math.max(14, alturaMm - 6)}mm` }}
+      >
         {qrDataUrl ? (
           <img src={qrDataUrl} alt="QR Code" className="w-full h-full object-contain" />
         ) : (
@@ -36,21 +39,15 @@ export default function Etiqueta({ lote, larguraMm = 50, alturaMm = 30 }: Etique
         )}
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col justify-between h-full py-0.5 leading-tight">
-        <div className="font-bold text-[8pt] truncate text-slate-900" title={lote.item}>
-          {lote.item}
+      <div className="flex-1 min-w-0 flex flex-col justify-center h-full py-0.5 space-y-0.5 leading-tight overflow-hidden">
+        <div className="text-[7.5pt] font-bold text-slate-900 truncate">
+          LOTE: <span className="font-mono">{lote.codigo}</span>
         </div>
-        <div className="text-[7pt] font-semibold text-slate-800">
-          Lote: <span className="font-mono font-bold text-slate-900">{lote.codigo}</span>
+        <div className="text-[7pt] text-slate-800 truncate">
+          PROC: {formatDataBR(lote.esterilizacao)}
         </div>
-        <div className="text-[6.5pt] text-slate-700 flex justify-between">
-          <span>Est: {formatDataBR(lote.esterilizacao)}</span>
-        </div>
-        <div className="text-[6.5pt] font-medium text-slate-800 flex justify-between">
-          <span>Val: {formatDataBR(lote.validade)}</span>
-        </div>
-        <div className="text-[6pt] text-slate-600 truncate" title={lote.responsavel}>
-          Resp: {lote.responsavel}
+        <div className="text-[7pt] font-semibold text-slate-900 truncate">
+          VAL: {formatDataBR(lote.validade)}
         </div>
       </div>
     </div>

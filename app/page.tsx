@@ -96,10 +96,6 @@ export default function CadastroPage() {
       setErroCadastro('Informe o nome do item esterilizado.');
       return;
     }
-    if (!responsavel.trim()) {
-      setErroCadastro('Informe o responsável técnico.');
-      return;
-    }
     if (validade < esterilizacao) {
       setErroCadastro('A data de validade não pode ser anterior à data de esterilização.');
       return;
@@ -111,7 +107,7 @@ export default function CadastroPage() {
         item: item.trim(),
         esterilizacao,
         validade,
-        responsavel: responsavel.trim()
+        responsavel: responsavel.trim() || 'Equipe'
       });
       setLoteCriado(novo);
       await carregarDadosHistorico();
@@ -349,14 +345,13 @@ export default function CadastroPage() {
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    Responsável Técnico *
+                    Responsável Técnico (Opcional)
                   </label>
                   <input
                     type="text"
                     value={responsavel}
                     onChange={(e) => setResponsavel(e.target.value)}
-                    required
-                    placeholder="Nome do profissional"
+                    placeholder="Nome do profissional (opcional)"
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
                   />
                 </div>
