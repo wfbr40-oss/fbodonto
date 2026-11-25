@@ -1,0 +1,6 @@
+{
+  "name": "FB Odonto - Etiquetas de Esterilização",
+  "description": "Sistema de cadastro de lotes esterilizados e emissão de etiquetas com QR Code e link curto para consultórios odontológicos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
