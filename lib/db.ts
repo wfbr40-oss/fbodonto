@@ -38,7 +38,6 @@ export async function getLote(codigo: string): Promise<Lote | null> {
     }
   }
 
-  // Fallback local
   const lotesLocal = getMockLotes();
   const foundLocal = lotesLocal.find(l => l.codigo === codigo);
   return foundLocal || null;
@@ -100,7 +99,6 @@ export async function criarLote(d: Omit<Lote, "codigo">): Promise<Lote> {
         .insert([novoLote]);
 
       if (!error) {
-        // Salvar também localmente como cache
         if (!lotesLocais.some(l => l.codigo === proximo)) {
           lotesLocais.unshift(novoLote);
           saveMockLotes(lotesLocais);
@@ -112,7 +110,7 @@ export async function criarLote(d: Omit<Lote, "codigo">): Promise<Lote> {
         tentativas++;
         continue;
       } else {
-        throw new Error(`Erro ao salvar no Supabase: ${error.message}. Verifique se a tabela 'lotes' foi criada no SQL Editor.`);
+        throw new Error(`Erro ao salvar no Supabase (RLS/Auth): ${error.message}.`);
       }
     } else {
       if (lotesLocais.some(l => l.codigo === proximo)) {
@@ -142,14 +140,11 @@ export async function listarRecentes(): Promise<Lote[]> {
       .limit(50);
 
     if (error || !data) {
-      console.warn("Erro ao listar do Supabase:", error);
       return lotesLocal.slice(0, 50);
     }
 
-    // Mesclar com locais se houver algo offline
     return data as Lote[];
-  } catch (e) {
-    console.warn("Exceção ao listar do Supabase:", e);
+  } catch {
     return lotesLocal.slice(0, 50);
   }
 }
@@ -160,29 +155,35 @@ export async function login(usuario: string, senha: string): Promise<void> {
     throw new Error("Preencha usuário e senha.");
   }
 
-  if (usuarioLimpo === 'admin' && senha === 'admin') {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: 'admin' }));
-    }
-    return;
-  }
-
   if (!isSupabaseConfigured) {
-    localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: usuarioLimpo }));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: usuarioLimpo }));
+    }
     return;
   }
 
   const emailAuth = usuarioLimpo.includes('@') ? usuarioLimpo : `${usuarioLimpo}@fbodonto.local`;
 
-  const { error } = await supabase.auth.signInWithPassword({ email: emailAuth, password: senha });
+  // 1. Tentar login direto no Supabase Auth
+  let { error } = await supabase.auth.signInWithPassword({ email: emailAuth, password: senha });
+
+  // 2. Se falhar (ex: usuário não existe), tentar cadastrar automaticamente no Supabase Auth
   if (error) {
-    if (usuarioLimpo === 'admin' || senha.length > 0) {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: usuarioLimpo }));
+    const { error: signUpError } = await supabase.auth.signUp({ email: emailAuth, password: senha });
+    if (!signUpError) {
+      const { error: retryError } = await supabase.auth.signInWithPassword({ email: emailAuth, password: senha });
+      if (!retryError) {
+        error = null;
       }
-      return;
     }
-    throw new Error("Usuário ou senha inválidos.");
+  }
+
+  if (error) {
+    throw new Error("Falha na autenticação com o Supabase. Verifique sua senha.");
+  }
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: usuarioLimpo }));
   }
 }
 
