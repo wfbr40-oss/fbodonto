@@ -11,15 +11,18 @@ create table if not exists public.lotes (
 -- Habilitar RLS (Row Level Security)
 alter table public.lotes enable row level security;
 
--- Políticas de acesso para lotes (permitindo inserção e leitura públicas para facilitar o uso no consultório)
+-- Políticas de acesso para lotes (removendo antigas se existirem e recriando)
+drop policy if exists "Permitir leitura de lotes" on public.lotes;
 create policy "Permitir leitura de lotes"
   on public.lotes for select
   using (true);
 
+drop policy if exists "Permitir inserção de lotes" on public.lotes;
 create policy "Permitir inserção de lotes"
   on public.lotes for insert
   with check (true);
 
+drop policy if exists "Permitir atualização de lotes" on public.lotes;
 create policy "Permitir atualização de lotes"
   on public.lotes for update
   using (true);
@@ -31,10 +34,12 @@ insert into storage.buckets (id, name, public)
 values ('config', 'config', true) 
 on conflict (id) do nothing;
 
+drop policy if exists "Permitir leitura pública de arquivos de config" on storage.objects;
 create policy "Permitir leitura pública de arquivos de config"
   on storage.objects for select
   using (bucket_id = 'config');
 
+drop policy if exists "Permitir upload de config" on storage.objects;
 create policy "Permitir upload de config"
   on storage.objects for insert
   with check (bucket_id = 'config');
