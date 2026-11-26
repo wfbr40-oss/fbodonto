@@ -248,17 +248,17 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Leitor de QR Code</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <h2 className="text-lg font-bold text-[#3E4546]">Leitor de QR Code</h2>
+              <p className="text-xs text-[#7A8283] mt-0.5">
                 Aponte a câmera para a etiqueta ou envie uma imagem para consultar o lote.
               </p>
             </div>
           </div>
 
-          <div className="relative bg-slate-950 rounded-xl overflow-hidden aspect-video flex items-center justify-center border border-slate-200">
+          <div className="relative bg-[#3E4546] rounded-xl overflow-hidden aspect-video flex items-center justify-center border border-[#E5DFDE]">
             <video
               ref={videoRef}
               muted
@@ -269,13 +269,13 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
 
             {cameraAtiva ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="w-44 h-44 border-2 border-white/80 rounded-xl shadow-[0_0_0_9999px_rgba(15,23,42,0.35)]" />
+                <div className="w-44 h-44 border-2 border-[#CDA9A8] rounded-xl shadow-[0_0_0_9999px_rgba(62,69,70,0.45)]" />
               </div>
             ) : (
-              <div className="text-center px-6 py-8 text-slate-400 space-y-2">
-                <Camera className="w-10 h-10 mx-auto text-slate-500" />
-                <p className="text-sm font-medium text-slate-200">Câmera desativada</p>
-                <p className="text-xs text-slate-400">
+              <div className="text-center px-6 py-8 text-[#D8D1D0] space-y-2">
+                <Camera className="w-10 h-10 mx-auto text-[#CDA9A8]" />
+                <p className="text-sm font-medium text-white">Câmera desativada</p>
+                <p className="text-xs text-[#D8D1D0]">
                   Clique em &ldquo;Ativar Câmera&rdquo; para escanear uma etiqueta de esterilização.
                 </p>
               </div>
@@ -287,16 +287,16 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
               <button
                 type="button"
                 onClick={iniciarCamera}
-                className="flex-1 min-w-[160px] py-2.5 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                className="flex-1 min-w-[160px] py-2.5 px-4 bg-[#505859] hover:bg-[#3E4546] text-white text-sm font-semibold rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
               >
-                <Camera className="w-4 h-4" />
+                <Camera className="w-4 h-4 text-[#CDA9A8]" />
                 <span>Ativar Câmera</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={pararCamera}
-                className="flex-1 min-w-[160px] py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                className="flex-1 min-w-[160px] py-2.5 px-4 bg-[#8C4A49] hover:bg-[#733B3A] text-white text-sm font-semibold rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
               >
                 <CameraOff className="w-4 h-4" />
                 <span>Parar Câmera</span>
@@ -306,9 +306,9 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+              className="py-2.5 px-4 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-sm font-semibold rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
             >
-              <Upload className="w-4 h-4" />
+              <Upload className="w-4 h-4 text-[#9E7372]" />
               <span>Enviar Imagem</span>
             </button>
             <input
@@ -320,9 +320,9 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
             />
           </div>
 
-          <div className="pt-4 border-t border-slate-200">
+          <div className="pt-4 border-t border-[#EDE7E6]">
             <form onSubmit={handleBuscaManual} className="space-y-2">
-              <label className="block text-xs font-semibold text-slate-600">
+              <label className="block text-xs font-semibold text-[#6E7677]">
                 Ou digite o código do lote / cole o link da etiqueta
               </label>
               <div className="flex gap-2">
@@ -331,14 +331,14 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                   value={codigoManual}
                   onChange={(e) => setCodigoManual(e.target.value)}
                   placeholder="Ex: 2026112501"
-                  className="flex-1 px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono text-slate-900 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  className="flex-1 px-3.5 py-2 bg-white border border-[#DCD4D3] rounded-lg text-sm font-mono text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
                 />
                 <button
                   type="submit"
                   disabled={carregando}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition inline-flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                  className="px-4 py-2 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition inline-flex items-center gap-2 cursor-pointer whitespace-nowrap"
                 >
-                  <Search className="w-4 h-4" />
+                  <Search className="w-4 h-4 text-[#CDA9A8]" />
                   <span>Buscar</span>
                 </button>
               </div>
@@ -346,23 +346,23 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col justify-between space-y-4">
+        <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 flex flex-col justify-between space-y-4">
           {carregando ? (
             <div className="py-16 text-center space-y-3">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600 mx-auto" />
-              <p className="text-sm text-slate-600">Consultando lote {ultimoCodigoLido}...</p>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#CDA9A8] border-t-[#505859] mx-auto" />
+              <p className="text-sm text-[#6E7677]">Consultando lote {ultimoCodigoLido}...</p>
             </div>
           ) : erro ? (
             <div className="py-10 text-center space-y-3">
-              <AlertCircle className="w-10 h-10 text-rose-500 mx-auto" />
-              <p className="text-sm font-semibold text-slate-900">Não foi possível ler o lote</p>
-              <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{erro}</p>
+              <AlertCircle className="w-10 h-10 text-[#9E7372] mx-auto" />
+              <p className="text-sm font-semibold text-[#3E4546]">Não foi possível ler o lote</p>
+              <p className="text-xs text-[#8C3B3B] bg-[#F9EDED] border border-[#E8C8C8] rounded-lg p-3">{erro}</p>
             </div>
           ) : loteEncontrado ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <h3 className="text-base font-bold text-slate-900">
-                  Lote Identificado <span className="font-mono text-sky-700">{loteEncontrado.codigo}</span>
+                <h3 className="text-base font-bold text-[#3E4546]">
+                  Lote Identificado <span className="font-mono tabular-nums text-[#9E7372]">{loteEncontrado.codigo}</span>
                 </h3>
                 <button
                   type="button"
@@ -371,7 +371,7 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                     setErro(null);
                     setCodigoManual('');
                   }}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  className="px-3 py-1.5 text-xs font-semibold text-[#6E7677] hover:text-[#3E4546] hover:bg-[#F4EFEF] rounded-lg transition inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Nova leitura</span>
@@ -379,13 +379,13 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
               </div>
 
               {msgFeedback && (
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
+                <div className="p-2.5 bg-[#EDF5F0] border border-[#C8DFCF] text-[#2E6045] rounded-lg text-xs font-semibold flex items-center gap-2">
                   <Check className="w-4 h-4 shrink-0" />
                   <span>{msgFeedback}</span>
                 </div>
               )}
 
-              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50 p-3 flex justify-center">
+              <div className="overflow-x-auto border border-[#E5DFDE] rounded-xl bg-[#F8F5F5] p-3 flex justify-center">
                 <div className="origin-top scale-[0.78] sm:scale-[0.85] -mb-12">
                   <CartaoLote
                     lote={loteEncontrado}
@@ -400,9 +400,9 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                   type="button"
                   onClick={handleCopiarTextoEImg}
                   disabled={processandoExport}
-                  className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-2.5 px-4 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Copy className="w-4 h-4" />
+                  <Copy className="w-4 h-4 text-[#CDA9A8]" />
                   <span>{processandoExport ? 'Processando...' : 'Copiar texto e imagem para prontuário'}</span>
                 </button>
 
@@ -410,7 +410,7 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                   <button
                     type="button"
                     onClick={handleCopiarTexto}
-                    className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="py-2 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <Copy className="w-3.5 h-3.5" />
                     <span>Copiar texto</span>
@@ -420,7 +420,7 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                     type="button"
                     onClick={handleBaixarImg}
                     disabled={processandoExport}
-                    className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="py-2 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Baixar imagem</span>
@@ -429,7 +429,7 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                   <button
                     type="button"
                     onClick={() => onReimprimir(loteEncontrado)}
-                    className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="py-2 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <Printer className="w-3.5 h-3.5" />
                     <span>Reimprimir</span>
@@ -440,18 +440,18 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                   href={`/${loteEncontrado.codigo}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-2 px-3 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
+                  className="w-full py-2 px-3 border border-[#E5DFDE] bg-white hover:bg-[#F8F5F5] text-[#505859] text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <ExternalLink className="w-3.5 h-3.5 text-[#9E7372]" />
                   <span>Abrir página pública do cartão</span>
                 </a>
               </div>
             </div>
           ) : (
-            <div className="py-16 text-center space-y-2 text-slate-500">
-              <Search className="w-10 h-10 mx-auto text-slate-300" />
-              <p className="text-sm font-semibold text-slate-700">Aguardando leitura de QR Code</p>
-              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+            <div className="py-16 text-center space-y-2 text-[#7A8283]">
+              <Search className="w-10 h-10 mx-auto text-[#CDA9A8]" />
+              <p className="text-sm font-semibold text-[#3E4546]">Aguardando leitura de QR Code</p>
+              <p className="text-xs text-[#7A8283] max-w-xs mx-auto">
                 Os detalhes de esterilização, validade e o cartão exportável aparecerão aqui assim que o código for lido.
               </p>
             </div>

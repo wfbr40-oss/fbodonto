@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@theme inline {
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
 @media print {
   body {
     background: white !important;
@@ -7,7 +12,7 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   .no-print {
     display: none !important;
   }

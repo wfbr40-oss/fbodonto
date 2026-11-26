@@ -242,17 +242,17 @@ export default function CadastroPage() {
 
   if (carregandoAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-600">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600" />
+      <div className="min-h-screen flex items-center justify-center bg-[#F6F4F3] text-[#505859]">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#CDA9A8] border-t-[#505859]" />
       </div>
     );
   }
 
   if (!autenticado) {
     return (
-      <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-200">
-          <div className="text-center mb-8">
+      <main className="min-h-screen bg-[#F6F4F3] flex items-center justify-center p-4 sm:p-6">
+        <div className="max-w-md w-full bg-[#FCFBFB] rounded-2xl border border-[#E5DFDE] shadow-sm p-8">
+          <div className="text-center mb-7 pb-6 border-b border-[#EDE7E6]">
             <div className="flex justify-center mb-4">
               <Image
                 src="/logo.png"
@@ -263,24 +263,24 @@ export default function CadastroPage() {
                 className="w-[130px] h-[130px] object-contain"
               />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">{config.nomeConsultorio}</h1>
-            <p className="text-sm text-slate-500 mt-1">Controle e Rastreabilidade de Esterilização</p>
+            <h1 className="text-2xl font-bold text-[#3E4546] tracking-tight">{config.nomeConsultorio}</h1>
+            <p className="text-sm text-[#7A8283] mt-1">Controle e Rastreabilidade de Esterilização</p>
           </div>
 
           {!isSupabaseConfigured && (
-            <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-              <b>Modo Demonstração (Local):</b> Variáveis do Supabase não configuradas. Os dados serão salvos no navegador (localStorage).
+            <div className="mb-5 p-3 bg-[#F7F1F1] border border-[#E3D3D2] rounded-lg text-xs text-[#505859]">
+              <b>Modo Demonstração (Local):</b> Variáveis do Supabase não configuradas. Os dados serão salvos no navegador.
             </div>
           )}
 
           {!adminConfigured ? (
             <form onSubmit={handleSetupAdmin} className="space-y-4">
-              <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg text-xs text-sky-900">
+              <div className="p-3 bg-[#F7F1F1] border border-[#E3D3D2] rounded-lg text-xs text-[#505859]">
                 <b>Primeiro Acesso:</b> Defina a senha inicial do usuário administrador para ativar o sistema.
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                   Usuário Administrador
                 </label>
                 <input
@@ -288,12 +288,12 @@ export default function CadastroPage() {
                   value={setupUsuario}
                   onChange={(e) => setSetupUsuario(e.target.value)}
                   required
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                  className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                   Senha Inicial
                 </label>
                 <input
@@ -302,13 +302,13 @@ export default function CadastroPage() {
                   onChange={(e) => setSetupSenha(e.target.value)}
                   required
                   minLength={4}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                  className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
                   placeholder="Mínimo 4 caracteres (ex: admin)"
                 />
               </div>
 
               {erroLogin && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-start space-x-2">
+                <div className="p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] text-xs rounded-lg flex items-start space-x-2">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{erroLogin}</span>
                 </div>
@@ -316,40 +316,40 @@ export default function CadastroPage() {
 
               <button
                 type="submit"
-                className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg shadow transition flex items-center justify-center space-x-2 cursor-pointer"
+                className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
               >
-                <LogIn className="w-5 h-5" />
+                <LogIn className="w-5 h-5 text-[#CDA9A8]" />
                 <span>Ativar Acesso e Entrar</span>
               </button>
             </form>
           ) : (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Usuário</label>
+                <label className="block text-xs font-semibold text-[#505859] mb-1.5">Usuário</label>
                 <input
                   type="text"
                   value={usuario}
                   onChange={(e) => setUsuario(e.target.value)}
                   required
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                  className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
                   placeholder="Ex: admin"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Senha</label>
+                <label className="block text-xs font-semibold text-[#505859] mb-1.5">Senha</label>
                 <input
                   type="password"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   required
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                  className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
                   placeholder="••••••••"
                 />
               </div>
 
               {erroLogin && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-start space-x-2">
+                <div className="p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] text-xs rounded-lg flex items-start space-x-2">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{erroLogin}</span>
                 </div>
@@ -357,9 +357,9 @@ export default function CadastroPage() {
 
               <button
                 type="submit"
-                className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg shadow transition flex items-center justify-center space-x-2 cursor-pointer"
+                className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
               >
-                <LogIn className="w-5 h-5" />
+                <LogIn className="w-5 h-5 text-[#CDA9A8]" />
                 <span>Entrar no Sistema</span>
               </button>
             </form>
@@ -370,15 +370,15 @@ export default function CadastroPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 no-print">
+    <div className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col">
+      <header className="bg-[#FCFBFB] border-b border-[#E5DFDE] sticky top-0 z-30 no-print">
         <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={handleToggleMenu}
               aria-label="Abrir ou fechar menu lateral"
-              className="p-2 -ml-1 rounded-lg text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 transition cursor-pointer shrink-0"
+              className="p-2 -ml-1 rounded-lg text-[#505859] hover:bg-[#F3ECEB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#CDA9A8] transition cursor-pointer shrink-0"
             >
               <Menu className="w-6 h-6" />
             </button>
@@ -394,12 +394,12 @@ export default function CadastroPage() {
               />
             </span>
 
-            <h1 className="font-bold text-slate-900 leading-tight truncate whitespace-nowrap">
+            <h1 className="font-bold text-[#3E4546] leading-tight truncate whitespace-nowrap">
               {config.nomeConsultorio}
             </h1>
           </div>
 
-          <div className="text-xs sm:text-sm font-medium text-slate-500 whitespace-nowrap shrink-0">
+          <div className="text-xs sm:text-sm font-medium text-[#9E7372] whitespace-nowrap shrink-0">
             {tituloAbaAtual}
           </div>
         </div>
@@ -409,24 +409,24 @@ export default function CadastroPage() {
         {sidebarMobile && (
           <div
             onClick={() => setSidebarMobile(false)}
-            className="fixed inset-0 bg-slate-900/40 z-40 lg:hidden no-print"
+            className="fixed inset-0 bg-[#3E4546]/35 z-40 lg:hidden no-print"
             aria-hidden="true"
           />
         )}
 
         <aside
-          className={`no-print fixed lg:sticky top-0 lg:top-16 left-0 z-50 lg:z-20 h-screen lg:h-[calc(100vh-4rem)] w-64 bg-white border-r border-slate-200 flex flex-col justify-between transition-transform duration-200 shrink-0 ${
+          className={`no-print fixed lg:sticky top-0 lg:top-16 left-0 z-50 lg:z-20 h-screen lg:h-[calc(100vh-4rem)] w-64 bg-[#FCFBFB] border-r border-[#E5DFDE] flex flex-col justify-between transition-transform duration-200 shrink-0 ${
             sidebarMobile ? 'translate-x-0' : '-translate-x-full'
           } ${sidebarDesktop ? 'lg:translate-x-0 lg:flex' : 'lg:-translate-x-full lg:hidden'}`}
         >
           <div>
-            <div className="flex items-center justify-between px-4 h-16 border-b border-slate-200 lg:hidden">
-              <span className="font-bold text-slate-900 text-sm">Menu</span>
+            <div className="flex items-center justify-between px-4 h-16 border-b border-[#E5DFDE] lg:hidden">
+              <span className="font-bold text-[#3E4546] text-sm">Menu</span>
               <button
                 type="button"
                 onClick={() => setSidebarMobile(false)}
                 aria-label="Fechar menu"
-                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
+                className="p-2 rounded-lg text-[#505859] hover:bg-[#F3ECEB] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -436,59 +436,73 @@ export default function CadastroPage() {
               <button
                 type="button"
                 onClick={() => selecionarAba('novo')}
-                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap ${
+                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap border ${
                   abaAtiva === 'novo'
-                    ? 'bg-sky-50 text-sky-700'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-[#CDA9A8]/22 text-[#3E4546] border-[#CDA9A8]/50'
+                    : 'border-transparent text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
                 }`}
               >
-                <PlusCircle className="w-4 h-4 shrink-0" />
+                <PlusCircle
+                  className={`w-4 h-4 shrink-0 ${
+                    abaAtiva === 'novo' ? 'text-[#9E7372]' : 'text-[#7A8283]'
+                  }`}
+                />
                 <span>Cadastrar Lote</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => selecionarAba('qrcode')}
-                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap ${
+                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap border ${
                   abaAtiva === 'qrcode'
-                    ? 'bg-sky-50 text-sky-700'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-[#CDA9A8]/22 text-[#3E4546] border-[#CDA9A8]/50'
+                    : 'border-transparent text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
                 }`}
               >
-                <ScanLine className="w-4 h-4 shrink-0" />
+                <ScanLine
+                  className={`w-4 h-4 shrink-0 ${
+                    abaAtiva === 'qrcode' ? 'text-[#9E7372]' : 'text-[#7A8283]'
+                  }`}
+                />
                 <span>Ler QR Code</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => selecionarAba('config')}
-                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap ${
+                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap border ${
                   abaAtiva === 'config'
-                    ? 'bg-sky-50 text-sky-700'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-[#CDA9A8]/22 text-[#3E4546] border-[#CDA9A8]/50'
+                    : 'border-transparent text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
                 }`}
               >
-                <Settings className="w-4 h-4 shrink-0" />
+                <Settings
+                  className={`w-4 h-4 shrink-0 ${
+                    abaAtiva === 'config' ? 'text-[#9E7372]' : 'text-[#7A8283]'
+                  }`}
+                />
                 <span>Configurações</span>
               </button>
             </nav>
           </div>
 
-          <div className="p-4 border-t border-slate-200 space-y-3 bg-slate-50/70">
+          <div className="p-4 border-t border-[#E5DFDE] space-y-3 bg-[#F8F5F5]">
             <div className="flex items-center gap-3 px-2 py-1">
-              <div className="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-[#DCD4D3] flex items-center justify-center text-[#9E7372] shrink-0">
                 <User className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] text-slate-500 leading-tight">Usuário conectado</p>
-                <p className="text-sm font-semibold text-slate-900 truncate">{usuarioConectado || 'Usuário'}</p>
+                <p className="text-[11px] text-[#7A8283] leading-tight">Usuário conectado</p>
+                <p className="text-sm font-semibold text-[#3E4546] truncate">
+                  {usuarioConectado || 'Usuário'}
+                </p>
               </div>
             </div>
 
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 bg-white rounded-lg transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+              className="w-full px-3.5 py-2.5 text-sm font-semibold text-[#505859] hover:text-[#8C3B3B] hover:bg-[#F9EDED] hover:border-[#E8C8C8] border border-[#E5DFDE] bg-white rounded-lg transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
             >
               <LogOut className="w-4 h-4 shrink-0" />
               <span>Sair</span>
@@ -498,21 +512,21 @@ export default function CadastroPage() {
 
         <main className="flex-1 min-w-0 max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full">
           {!isSupabaseConfigured && (
-            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 no-print">
+            <div className="mb-6 p-4 bg-[#F7F1F1] border border-[#E3D3D2] rounded-xl text-xs text-[#505859] no-print">
               <b>Aviso:</b> Usando armazenamento local (localStorage). Para sincronizar em nuvem (Supabase), configure as variáveis de ambiente .env.
             </div>
           )}
 
           {abaAtiva === 'novo' && (
             <div className="space-y-6">
-              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit no-print">
+              <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit no-print">
                 <button
                   type="button"
                   onClick={() => setSubAbaLote('cadastro')}
                   className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer whitespace-nowrap ${
                     subAbaLote === 'cadastro'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#FCFBFB] text-[#3E4546] shadow-xs'
+                      : 'text-[#6E7677] hover:text-[#3E4546]'
                   }`}
                 >
                   Novo Lote
@@ -522,8 +536,8 @@ export default function CadastroPage() {
                   onClick={() => setSubAbaLote('historico')}
                   className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer whitespace-nowrap ${
                     subAbaLote === 'historico'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#FCFBFB] text-[#3E4546] shadow-xs'
+                      : 'text-[#6E7677] hover:text-[#3E4546]'
                   }`}
                 >
                   Histórico de Lotes ({historico.length})
@@ -532,17 +546,17 @@ export default function CadastroPage() {
 
               {subAbaLote === 'cadastro' ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-6 no-print">
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
-                      <h2 className="text-lg font-bold text-slate-900">Novo Lote de Esterilização</h2>
-                      <span className="text-xs font-mono tabular-nums text-slate-500">
-                        Próximo código: <strong className="text-sky-700">{proximoCodPrevisto}</strong>
+                  <div className="md:col-span-2 bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 no-print">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-5 pb-4 border-b border-[#EDE7E6]">
+                      <h2 className="text-lg font-bold text-[#3E4546]">Novo Lote de Esterilização</h2>
+                      <span className="text-xs font-mono tabular-nums text-[#7A8283]">
+                        Próximo código: <strong className="text-[#9E7372]">{proximoCodPrevisto}</strong>
                       </span>
                     </div>
 
                     <form onSubmit={handleCadastrarLote} className="space-y-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Nome do Item / Kit Esterilizado (Opcional)
                         </label>
                         <input
@@ -550,13 +564,13 @@ export default function CadastroPage() {
                           value={item}
                           onChange={(e) => setItem(e.target.value)}
                           placeholder="Ex: Kit Clínico Cirúrgico 01 (opcional)"
-                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
                         />
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                          <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                             Data de Esterilização *
                           </label>
                           <input
@@ -564,12 +578,12 @@ export default function CadastroPage() {
                             value={esterilizacao}
                             onChange={(e) => setEsterilizacao(e.target.value)}
                             required
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                            className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                          <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                             Validade (Dias) *
                           </label>
                           <input
@@ -582,29 +596,29 @@ export default function CadastroPage() {
                               setDiasValidade(val);
                             }}
                             required
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900 tabular-nums"
+                            className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
                           />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                          <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                             Data de Validade Calculada
                           </label>
                           <input
                             type="date"
                             value={validade}
                             readOnly
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg bg-slate-50 text-slate-800 font-semibold"
+                            className="w-full px-4 py-2.5 border border-[#E5DFDE] rounded-lg bg-[#F4EFEF] text-[#3E4546] font-semibold"
                           />
-                          <span className="text-[11px] text-slate-500 mt-1 block">
+                          <span className="text-[11px] text-[#7A8283] mt-1 block">
                             Calculada automaticamente (editável via dias)
                           </span>
                         </div>
 
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                          <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                             Quantidade de Etiquetas *
                           </label>
                           <input
@@ -614,13 +628,13 @@ export default function CadastroPage() {
                             value={quantidade}
                             onChange={(e) => setQuantidade(parseInt(e.target.value, 10) || 1)}
                             required
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900 tabular-nums"
+                            className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
                           />
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Responsável Técnico (Opcional)
                         </label>
                         <input
@@ -628,12 +642,12 @@ export default function CadastroPage() {
                           value={responsavel}
                           onChange={(e) => setResponsavel(e.target.value)}
                           placeholder="Nome do profissional (opcional)"
-                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
                         />
                       </div>
 
                       {erroCadastro && (
-                        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-center space-x-2">
+                        <div className="p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] text-xs rounded-lg flex items-center space-x-2">
                           <AlertCircle className="w-4 h-4 shrink-0" />
                           <span>{erroCadastro}</span>
                         </div>
@@ -642,20 +656,20 @@ export default function CadastroPage() {
                       <button
                         type="submit"
                         disabled={salvando}
-                        className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-semibold rounded-lg shadow transition flex items-center justify-center space-x-2 cursor-pointer"
+                        className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
                       >
-                        <PlusCircle className="w-5 h-5" />
+                        <PlusCircle className="w-5 h-5 text-[#CDA9A8]" />
                         <span>{salvando ? 'Cadastrando...' : 'Cadastrar Lote e Gerar Etiquetas'}</span>
                       </button>
                     </form>
                   </div>
 
                   <div className="space-y-6 no-print">
-                    <div className="bg-white rounded-xl border border-slate-200 p-6">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">
+                    <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#9E7372] mb-3">
                         Instruções de Impressão
                       </h3>
-                      <ul className="text-xs text-slate-600 space-y-2 list-disc list-inside">
+                      <ul className="text-xs text-[#6E7677] space-y-2 list-disc list-inside leading-relaxed">
                         <li>Configure a impressora térmica ou comum para 100% de escala (sem &quot;ajustar à página&quot;).</li>
                         <li>
                           Dimensões atuais: {config.larguraMm}mm &times; {config.alturaMm}mm.
@@ -665,15 +679,15 @@ export default function CadastroPage() {
                     </div>
 
                     {loteCriado && (
-                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-emerald-900 space-y-3">
-                        <div className="flex items-center space-x-2 font-bold text-emerald-800">
-                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <div className="bg-[#F8F3F3] border border-[#CDA9A8]/65 rounded-xl p-5 text-[#3E4546] space-y-3">
+                        <div className="flex items-center space-x-2 font-bold text-[#3E4546]">
+                          <CheckCircle2 className="w-5 h-5 text-[#9E7372] shrink-0" />
                           <span>Lote {loteCriado.codigo} Cadastrado!</span>
                         </div>
-                        <p className="text-xs text-emerald-700">
+                        <p className="text-xs text-[#6E7677]">
                           {quantidade} etiqueta(s) pronta(s) para impressão ou acesso ao cartão público.
                         </p>
-                        <div className="flex justify-center bg-white rounded-lg p-3 border border-emerald-200 overflow-hidden">
+                        <div className="flex justify-center bg-white rounded-lg p-3 border border-[#E5DFDE] overflow-hidden">
                           <Etiqueta
                             lote={loteCriado}
                             larguraMm={config.larguraMm}
@@ -684,18 +698,18 @@ export default function CadastroPage() {
                           <button
                             type="button"
                             onClick={() => window.print()}
-                            className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow text-xs flex items-center justify-center space-x-1 cursor-pointer whitespace-nowrap"
+                            className="flex-1 py-2.5 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg text-xs flex items-center justify-center space-x-1.5 cursor-pointer whitespace-nowrap transition"
                           >
-                            <Printer className="w-4 h-4" />
+                            <Printer className="w-4 h-4 text-[#CDA9A8]" />
                             <span>Imprimir</span>
                           </button>
                           <a
                             href={`/${loteCriado.codigo}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-3 py-2 bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-800 font-semibold rounded-lg text-xs flex items-center space-x-1 whitespace-nowrap"
+                            className="px-3.5 py-2.5 bg-white border border-[#DCD4D3] hover:bg-[#F4EFEF] text-[#505859] font-semibold rounded-lg text-xs flex items-center space-x-1.5 whitespace-nowrap transition"
                           >
-                            <ExternalLink className="w-4 h-4" />
+                            <ExternalLink className="w-4 h-4 text-[#9E7372]" />
                             <span>Cartão</span>
                           </a>
                         </div>
@@ -704,16 +718,16 @@ export default function CadastroPage() {
                   </div>
                 </div>
               ) : (
-                <div className="bg-white rounded-xl border border-slate-200 p-6 no-print">
-                  <h2 className="text-lg font-bold text-slate-900 mb-4">Histórico de Lotes Cadastrados</h2>
+                <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 no-print">
+                  <h2 className="text-lg font-bold text-[#3E4546] mb-4">Histórico de Lotes Cadastrados</h2>
                   {carregandoHistorico ? (
-                    <div className="py-12 text-center text-slate-500 text-sm">Carregando histórico...</div>
+                    <div className="py-12 text-center text-[#7A8283] text-sm">Carregando histórico...</div>
                   ) : historico.length === 0 ? (
-                    <div className="py-12 text-center text-slate-500 text-sm">Nenhum lote cadastrado ainda.</div>
+                    <div className="py-12 text-center text-[#7A8283] text-sm">Nenhum lote cadastrado ainda.</div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm text-slate-700">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-600 font-bold">
+                      <table className="w-full text-left text-sm text-[#505859]">
+                        <thead className="bg-[#F6F2F2] border-b border-[#E5DFDE] text-xs uppercase text-[#6E7677] font-bold">
                           <tr>
                             <th className="p-3">Código / Lote</th>
                             <th className="p-3">Item</th>
@@ -723,16 +737,18 @@ export default function CadastroPage() {
                             <th className="p-3 text-right">Ações</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200">
+                        <tbody className="divide-y divide-[#EDE7E6]">
                           {historico.map((l) => (
-                            <tr key={l.codigo} className="hover:bg-slate-50">
-                              <td className="p-3 font-mono tabular-nums font-bold text-slate-900">{l.codigo}</td>
+                            <tr key={l.codigo} className="hover:bg-[#F9F6F6] transition-colors">
+                              <td className="p-3 font-mono tabular-nums font-bold text-[#3E4546]">
+                                {l.codigo}
+                              </td>
                               <td className="p-3 font-medium">
-                                {l.item || <span className="text-slate-400 font-normal italic">—</span>}
+                                {l.item || <span className="text-[#9BA2A3] font-normal italic">—</span>}
                               </td>
                               <td className="p-3 tabular-nums">{formatDataBR(l.esterilizacao)}</td>
                               <td className="p-3 tabular-nums">{formatDataBR(l.validade)}</td>
-                              <td className="p-3 text-slate-600">{l.responsavel}</td>
+                              <td className="p-3 text-[#6E7677]">{l.responsavel}</td>
                               <td className="p-3 text-right space-x-2 whitespace-nowrap">
                                 <button
                                   type="button"
@@ -742,18 +758,18 @@ export default function CadastroPage() {
                                     setSubAbaLote('cadastro');
                                     window.scrollTo({ top: 0, behavior: 'smooth' });
                                   }}
-                                  className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
+                                  className="px-2.5 py-1 bg-[#F4ECEC] hover:bg-[#EBDDDD] text-[#505859] border border-[#E3D3D2] text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
                                 >
-                                  <Printer className="w-3.5 h-3.5" />
+                                  <Printer className="w-3.5 h-3.5 text-[#9E7372]" />
                                   <span>Reimprimir</span>
                                 </button>
                                 <a
                                   href={`/${l.codigo}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded transition inline-flex items-center space-x-1"
+                                  className="px-2.5 py-1 bg-white hover:bg-[#F4EFEF] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded transition inline-flex items-center space-x-1"
                                 >
-                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  <ExternalLink className="w-3.5 h-3.5 text-[#7A8283]" />
                                   <span>Cartão</span>
                                 </a>
                               </td>
@@ -784,14 +800,14 @@ export default function CadastroPage() {
 
           {abaAtiva === 'config' && (
             <div className="max-w-2xl mx-auto space-y-6 no-print">
-              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit">
+              <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit">
                 <button
                   type="button"
                   onClick={() => setSubAbaConfig('geral')}
                   className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer whitespace-nowrap ${
                     subAbaConfig === 'geral'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#FCFBFB] text-[#3E4546] shadow-xs'
+                      : 'text-[#6E7677] hover:text-[#3E4546]'
                   }`}
                 >
                   Consultório e Etiquetas
@@ -801,23 +817,23 @@ export default function CadastroPage() {
                   onClick={() => setSubAbaConfig('usuarios')}
                   className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                     subAbaConfig === 'usuarios'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#FCFBFB] text-[#3E4546] shadow-xs'
+                      : 'text-[#6E7677] hover:text-[#3E4546]'
                   }`}
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
+                  <UserPlus className="w-3.5 h-3.5 text-[#9E7372]" />
                   <span>Cadastrar Usuário</span>
                 </button>
               </div>
 
               {subAbaConfig === 'geral' ? (
-                <div className="bg-white rounded-xl border border-slate-200 p-6">
-                  <h2 className="text-lg font-bold text-slate-900 mb-4">
+                <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
+                  <h2 className="text-lg font-bold text-[#3E4546] mb-4 pb-3 border-b border-[#EDE7E6]">
                     Configurações de Impressão e Consultório
                   </h2>
 
                   {msgConfigSalva && (
-                    <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
+                    <div className="mb-4 p-3 bg-[#EDF5F0] border border-[#C8DFCF] text-[#2E6045] rounded-lg text-xs font-semibold flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 shrink-0" />
                       <span>{msgConfigSalva}</span>
                     </div>
@@ -825,7 +841,7 @@ export default function CadastroPage() {
 
                   <form onSubmit={handleSalvarConfig} className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                         Nome do Consultório
                       </label>
                       <input
@@ -833,13 +849,13 @@ export default function CadastroPage() {
                         value={config.nomeConsultorio}
                         onChange={(e) => setConfig({ ...config, nomeConsultorio: e.target.value })}
                         required
-                        className="w-full px-4 py-2 border border-slate-300 rounded-lg text-slate-900"
+                        className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Largura da Etiqueta (mm)
                         </label>
                         <input
@@ -849,11 +865,11 @@ export default function CadastroPage() {
                           value={config.larguraMm}
                           onChange={(e) => setConfig({ ...config, larguraMm: Number(e.target.value) })}
                           required
-                          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-slate-900 tabular-nums"
+                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Altura da Etiqueta (mm)
                         </label>
                         <input
@@ -863,13 +879,13 @@ export default function CadastroPage() {
                           value={config.alturaMm}
                           onChange={(e) => setConfig({ ...config, alturaMm: Number(e.target.value) })}
                           required
-                          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-slate-900 tabular-nums"
+                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                         Dias de Validade Padrão
                       </label>
                       <input
@@ -879,13 +895,13 @@ export default function CadastroPage() {
                         value={config.diasValidade}
                         onChange={(e) => setConfig({ ...config, diasValidade: Number(e.target.value) })}
                         required
-                        className="w-full px-4 py-2 border border-slate-300 rounded-lg text-slate-900 tabular-nums"
+                        className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
                       />
                     </div>
 
                     <button
                       type="submit"
-                      className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg shadow transition cursor-pointer"
+                      className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition cursor-pointer"
                     >
                       Salvar Configurações
                     </button>
@@ -893,16 +909,16 @@ export default function CadastroPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="bg-white rounded-xl border border-slate-200 p-6">
-                    <h2 className="text-lg font-bold text-slate-900 mb-1">Cadastrar Novo Usuário</h2>
-                    <p className="text-xs text-slate-500 mb-5">
+                  <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
+                    <h2 className="text-lg font-bold text-[#3E4546] mb-1">Cadastrar Novo Usuário</h2>
+                    <p className="text-xs text-[#7A8283] mb-5 pb-4 border-b border-[#EDE7E6]">
                       Crie acessos individuais para dentistas e auxiliares. A senha padrão inicial é{' '}
-                      <span className="font-mono font-semibold text-slate-700">1234</span>.
+                      <span className="font-mono font-semibold text-[#9E7372]">1234</span>.
                     </p>
 
                     <form onSubmit={handleCadastrarUsuario} className="space-y-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Usuário (login) *
                         </label>
                         <input
@@ -911,12 +927,12 @@ export default function CadastroPage() {
                           onChange={(e) => setNovoUsuario(e.target.value)}
                           required
                           placeholder="Ex: fabiana ou auxiliar"
-                          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Nome Completo (Opcional)
                         </label>
                         <input
@@ -924,12 +940,12 @@ export default function CadastroPage() {
                           value={novoNome}
                           onChange={(e) => setNovoNome(e.target.value)}
                           placeholder="Ex: Dra. Fabiana Bezerra"
-                          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Senha Inicial (padrão: 1234) *
                         </label>
                         <div className="relative">
@@ -939,13 +955,13 @@ export default function CadastroPage() {
                             onChange={(e) => setNovaSenha(e.target.value)}
                             required
                             minLength={4}
-                            className="w-full px-4 py-2 pr-10 border border-slate-300 rounded-lg text-slate-900 font-mono focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                            className="w-full px-4 py-2.5 pr-10 bg-white border border-[#DCD4D3] rounded-lg text-[#3E4546] font-mono focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
                           />
                           <button
                             type="button"
                             onClick={() => setMostrarNovaSenha((prev) => !prev)}
                             aria-label="Mostrar ou ocultar senha"
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700 cursor-pointer"
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[#7A8283] hover:text-[#3E4546] cursor-pointer"
                           >
                             {mostrarNovaSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
@@ -953,14 +969,14 @@ export default function CadastroPage() {
                       </div>
 
                       {erroUsuario && (
-                        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-start gap-2">
+                        <div className="p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] text-xs rounded-lg flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                           <span>{erroUsuario}</span>
                         </div>
                       )}
 
                       {msgUsuarioSucesso && (
-                        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-start gap-2">
+                        <div className="p-3 bg-[#EDF5F0] border border-[#C8DFCF] text-[#2E6045] text-xs rounded-lg flex items-start gap-2">
                           <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                           <span>{msgUsuarioSucesso}</span>
                         </div>
@@ -969,24 +985,24 @@ export default function CadastroPage() {
                       <button
                         type="submit"
                         disabled={cadastrandoUsuario}
-                        className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-semibold rounded-lg shadow transition flex items-center justify-center gap-2 cursor-pointer"
+                        className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        <UserPlus className="w-4 h-4" />
+                        <UserPlus className="w-4 h-4 text-[#CDA9A8]" />
                         <span>{cadastrandoUsuario ? 'Cadastrando...' : 'Cadastrar Usuário'}</span>
                       </button>
                     </form>
                   </div>
 
                   {usuariosLista.length > 0 && (
-                    <div className="bg-white rounded-xl border border-slate-200 p-6">
-                      <h3 className="text-sm font-bold text-slate-900 mb-3">Usuários Cadastrados</h3>
-                      <div className="divide-y divide-slate-200">
+                    <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
+                      <h3 className="text-sm font-bold text-[#3E4546] mb-3">Usuários Cadastrados</h3>
+                      <div className="divide-y divide-[#EDE7E6]">
                         {usuariosLista.map((u) => (
                           <div key={u.usuario} className="py-2.5 flex items-center justify-between text-sm">
                             <div>
-                              <span className="font-semibold text-slate-900">{u.nome}</span>
-                              <span className="text-slate-400 mx-2">/</span>
-                              <span className="font-mono text-xs text-slate-600">{u.usuario}</span>
+                              <span className="font-semibold text-[#3E4546]">{u.nome}</span>
+                              <span className="text-[#CDA9A8] mx-2">·</span>
+                              <span className="font-mono text-xs text-[#6E7677]">{u.usuario}</span>
                             </div>
                           </div>
                         ))}
