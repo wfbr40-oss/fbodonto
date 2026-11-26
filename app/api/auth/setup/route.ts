@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   attachSessionCookie,
   createSessionToken,
+  createStoredUser,
   hashPassword,
   isAdminConfigured,
   normalizarUsuario,
-  readStoredUsers,
   verifySameOriginMutation,
-  writeStoredUsers,
 } from '@/lib/server-auth';
 
 export async function POST(req: NextRequest) {
@@ -15,7 +14,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Origem da requisição não permitida.' }, { status: 403 });
   }
 
-  if (isAdminConfigured()) {
+  const { configured } = await isAdminConfigured();
+  if (configured) {
     return NextResponse.json(
       { error: 'O acesso administrativo inicial já foi configurado.' },
       { status: 403 }
@@ -41,16 +41,20 @@ export async function POST(req: NextRequest) {
   }
 
   const { salt, hash } = hashPassword(senha);
-  const existing = readStoredUsers();
-  existing.push({
-    usuario: usuarioLimpo,
-    nome: nomeLimpo,
-    role: 'admin',
-    salt,
-    hash,
-    criadoEm: new Date().toISOString(),
-  });
-  writeStoredUsers(existing);
+  let storageMode: 'supabase' | 'local' = 'local';
+  try {
+    const result = await createStoredUser({
+      usuario: usuarioLimpo,
+      nome: nomeLimpo,
+      role: 'admin',
+      salt,
+      hash,
+    });
+    storageMode = result.storageMode;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erro ao salvar administrador.';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 
   const token = createSessionToken({
     usuario: usuarioLimpo,
@@ -62,6 +66,7 @@ export async function POST(req: NextRequest) {
     autenticado: true,
     usuario: nomeLimpo,
     role: 'admin',
+    storageMode,
     token,
   });
   attachSessionCookie(res, token);

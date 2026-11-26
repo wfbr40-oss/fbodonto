@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  createStoredUser,
   getEnvAdminConfig,
   getSessionFromRequest,
   hashPassword,
+  listStoredUsers,
   normalizarUsuario,
   PublicUser,
-  readStoredUsers,
   verifySameOriginMutation,
-  writeStoredUsers,
 } from '@/lib/server-auth';
 
 export async function GET(req: NextRequest) {
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
   }
 
-  const users = readStoredUsers();
+  const { users, storageMode } = await listStoredUsers();
   const lista: PublicUser[] = users.map((u) => ({
     usuario: u.usuario,
     nome: u.nome,
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ usuarios: lista });
+  return NextResponse.json({ usuarios: lista, storageMode });
 }
 
 export async function POST(req: NextRequest) {
@@ -73,31 +73,35 @@ export async function POST(req: NextRequest) {
   }
 
   const envAdmin = getEnvAdminConfig();
-  const users = readStoredUsers();
-
-  if ((envAdmin && usuarioLimpo === envAdmin.username) || users.some((u) => u.usuario === usuarioLimpo)) {
+  if (envAdmin && usuarioLimpo === envAdmin.username) {
     return NextResponse.json({ error: 'Este usuário já está cadastrado.' }, { status: 409 });
   }
 
   const { salt, hash } = hashPassword(senhaFinal);
-  const novoUsuario = {
-    usuario: usuarioLimpo,
-    nome: nomeLimpo,
-    role: 'operador' as const,
-    salt,
-    hash,
-    criadoEm: new Date().toISOString(),
-  };
 
-  users.push(novoUsuario);
-  writeStoredUsers(users);
+  try {
+    const { created, storageMode } = await createStoredUser({
+      usuario: usuarioLimpo,
+      nome: nomeLimpo,
+      role: 'operador',
+      salt,
+      hash,
+    });
 
-  return NextResponse.json({
-    usuario: {
-      usuario: novoUsuario.usuario,
-      nome: novoUsuario.nome,
-      role: novoUsuario.role,
-      criadoEm: novoUsuario.criadoEm,
-    },
-  });
+    return NextResponse.json({
+      usuario: {
+        usuario: created.usuario,
+        nome: created.nome,
+        role: created.role,
+        criadoEm: created.criadoEm,
+      },
+      storageMode,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'DUPLICATE_USER') {
+      return NextResponse.json({ error: 'Este usuário já está cadastrado.' }, { status: 409 });
+    }
+    const msg = err instanceof Error ? err.message : 'Erro ao cadastrar usuário.';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

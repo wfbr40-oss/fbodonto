@@ -8,10 +8,9 @@ create table if not exists public.lotes (
   criado_em timestamptz not null default now()
 );
 
--- Habilitar RLS (Row Level Security)
+-- Habilitar RLS (Row Level Security) para lotes
 alter table public.lotes enable row level security;
 
--- Políticas de acesso para lotes (sem exigir confirmação/login por e-mail do Supabase Auth)
 drop policy if exists "Permitir leitura de lotes" on public.lotes;
 create policy "Permitir leitura de lotes"
   on public.lotes for select
@@ -25,6 +24,34 @@ create policy "Permitir inserção de lotes"
 drop policy if exists "Permitir atualização de lotes" on public.lotes;
 create policy "Permitir atualização de lotes"
   on public.lotes for update
+  using (true);
+
+-- Tabela de usuários do sistema (login por usuário e senha sem e-mail)
+create table if not exists public.usuarios (
+  usuario text primary key check (char_length(usuario) >= 2),
+  nome text not null,
+  role text not null default 'operador' check (role in ('admin', 'operador')),
+  salt text not null,
+  hash text not null,
+  criado_em timestamptz not null default now()
+);
+
+-- Habilitar RLS para usuários
+alter table public.usuarios enable row level security;
+
+drop policy if exists "Permitir leitura de usuarios" on public.usuarios;
+create policy "Permitir leitura de usuarios"
+  on public.usuarios for select
+  using (true);
+
+drop policy if exists "Permitir insercao de usuarios" on public.usuarios;
+create policy "Permitir insercao de usuarios"
+  on public.usuarios for insert
+  with check (true);
+
+drop policy if exists "Permitir atualizacao de usuarios" on public.usuarios;
+create policy "Permitir atualizacao de usuarios"
+  on public.usuarios for update
   using (true);
 
 -- Configuração do Storage para a logo (bucket público 'config')

@@ -211,7 +211,7 @@ export async function cadastrarUsuario(params: {
   usuario: string;
   nome?: string;
   senha?: string;
-}): Promise<UsuarioRegistrado> {
+}): Promise<{ usuario: UsuarioRegistrado; storageMode: 'supabase' | 'local' }> {
   const res = await fetch('/api/auth/usuarios', {
     method: 'POST',
     headers: authHeaders(true),
@@ -224,19 +224,28 @@ export async function cadastrarUsuario(params: {
     throw new Error(payload.error || 'Erro ao cadastrar usuário.');
   }
 
-  return payload.usuario as UsuarioRegistrado;
+  return {
+    usuario: payload.usuario as UsuarioRegistrado,
+    storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
+  };
 }
 
-export async function listarUsuarios(): Promise<UsuarioRegistrado[]> {
+export async function listarUsuarios(): Promise<{
+  usuarios: UsuarioRegistrado[];
+  storageMode: 'supabase' | 'local';
+}> {
   const res = await fetch('/api/auth/usuarios', {
     method: 'GET',
     headers: authHeaders(false),
     credentials: 'include',
   });
 
-  if (!res.ok) return [];
+  if (!res.ok) return { usuarios: [], storageMode: 'local' };
   const payload = await res.json();
-  return (payload.usuarios as UsuarioRegistrado[]) || [];
+  return {
+    usuarios: (payload.usuarios as UsuarioRegistrado[]) || [],
+    storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
+  };
 }
 
 export async function logout(): Promise<void> {
@@ -255,6 +264,7 @@ export async function obterSessaoUsuario(): Promise<{
   autenticado: boolean;
   usuario: string | null;
   adminConfigured: boolean;
+  storageMode: 'supabase' | 'local';
 }> {
   try {
     const res = await fetch('/api/auth/session', {
@@ -263,16 +273,17 @@ export async function obterSessaoUsuario(): Promise<{
       credentials: 'include',
     });
     if (!res.ok) {
-      return { autenticado: false, usuario: null, adminConfigured: true };
+      return { autenticado: false, usuario: null, adminConfigured: true, storageMode: 'local' };
     }
     const payload = await res.json();
     return {
       autenticado: Boolean(payload.autenticado),
       usuario: payload.usuario || null,
       adminConfigured: Boolean(payload.adminConfigured),
+      storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
     };
   } catch {
-    return { autenticado: false, usuario: null, adminConfigured: true };
+    return { autenticado: false, usuario: null, adminConfigured: true, storageMode: 'local' };
   }
 }
 

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const SESSION_COOKIE_NAME = 'fb_odonto_session';
@@ -21,6 +22,45 @@ function getSigningKey(): Buffer {
   return globalForAuth.__fbOdontoAuthSecret;
 }
 
+function getServerSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    '';
+
+  const configured =
+    Boolean(url) &&
+    url !== 'https://placeholder.supabase.co' &&
+    !url.includes('placeholder') &&
+    Boolean(key) &&
+    key !== 'placeholder-key';
+
+  if (!configured) return null;
+
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
+function isMissingTableError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const code = error.code || '';
+  const msg = (error.message || '').toLowerCase();
+  return (
+    code === 'PGRST205' ||
+    code === '42P01' ||
+    msg.includes('could not find the table') ||
+    msg.includes('does not exist')
+  );
+}
+
 export type StoredUser = {
   usuario: string;
   nome: string;
@@ -36,6 +76,8 @@ export type PublicUser = {
   role: 'admin' | 'operador';
   criadoEm: string;
 };
+
+export type UserStorageMode = 'supabase' | 'local';
 
 export function normalizarUsuario(usuario: string): string {
   return usuario.trim().toLowerCase().replace(/\s+/g, '');
@@ -67,7 +109,7 @@ function ensureDataDir() {
   }
 }
 
-export function readStoredUsers(): StoredUser[] {
+function readLocalUsers(): StoredUser[] {
   try {
     if (!fs.existsSync(USERS_FILE)) return [];
     const raw = fs.readFileSync(USERS_FILE, 'utf8');
@@ -78,9 +120,147 @@ export function readStoredUsers(): StoredUser[] {
   }
 }
 
-export function writeStoredUsers(users: StoredUser[]): void {
+function writeLocalUsers(users: StoredUser[]): void {
   ensureDataDir();
   fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), { mode: 0o600 });
+}
+
+type DbUserRow = {
+  usuario: string;
+  nome: string;
+  role: 'admin' | 'operador';
+  salt: string;
+  hash: string;
+  criado_em: string;
+};
+
+function mapRowToStoredUser(row: DbUserRow): StoredUser {
+  return {
+    usuario: row.usuario,
+    nome: row.nome,
+    role: row.role === 'admin' ? 'admin' : 'operador',
+    salt: row.salt,
+    hash: row.hash,
+    criadoEm: row.criado_em,
+  };
+}
+
+export async function listStoredUsers(): Promise<{ users: StoredUser[]; storageMode: UserStorageMode }> {
+  const sb = getServerSupabase();
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from('usuarios')
+        .select('usuario, nome, role, salt, hash, criado_em')
+        .order('criado_em', { ascending: true });
+
+      if (!error && data) {
+        return {
+          users: (data as DbUserRow[]).map(mapRowToStoredUser),
+          storageMode: 'supabase',
+        };
+      }
+
+      if (!isMissingTableError(error)) {
+        console.warn('Erro ao consultar public.usuarios no Supabase:', error?.message);
+      }
+    } catch (e) {
+      console.warn('Falha ao conectar no Supabase para usuarios:', e);
+    }
+  }
+
+  return { users: readLocalUsers(), storageMode: 'local' };
+}
+
+export async function findStoredUser(
+  usuario: string
+): Promise<{ user: StoredUser | null; storageMode: UserStorageMode }> {
+  const sb = getServerSupabase();
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from('usuarios')
+        .select('usuario, nome, role, salt, hash, criado_em')
+        .eq('usuario', usuario)
+        .maybeSingle();
+
+      if (!error) {
+        return {
+          user: data ? mapRowToStoredUser(data as DbUserRow) : null,
+          storageMode: 'supabase',
+        };
+      }
+
+      if (!isMissingTableError(error)) {
+        console.warn('Erro ao buscar usuário no Supabase:', error.message);
+      }
+    } catch (e) {
+      console.warn('Falha ao buscar usuário no Supabase:', e);
+    }
+  }
+
+  const localUsers = readLocalUsers();
+  return {
+    user: localUsers.find((u) => u.usuario === usuario) || null,
+    storageMode: 'local',
+  };
+}
+
+export async function createStoredUser(
+  user: Omit<StoredUser, 'criadoEm'>
+): Promise<{ created: StoredUser; storageMode: UserStorageMode }> {
+  const criadoEm = new Date().toISOString();
+  const sb = getServerSupabase();
+
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from('usuarios')
+        .insert([
+          {
+            usuario: user.usuario,
+            nome: user.nome,
+            role: user.role,
+            salt: user.salt,
+            hash: user.hash,
+            criado_em: criadoEm,
+          },
+        ])
+        .select('usuario, nome, role, salt, hash, criado_em')
+        .single();
+
+      if (!error && data) {
+        return {
+          created: mapRowToStoredUser(data as DbUserRow),
+          storageMode: 'supabase',
+        };
+      }
+
+      if (error?.code === '23505') {
+        throw new Error('DUPLICATE_USER');
+      }
+
+      if (!isMissingTableError(error)) {
+        throw new Error(error?.message || 'Erro ao gravar usuário no Supabase.');
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message === 'DUPLICATE_USER') {
+        throw err;
+      }
+      if (err instanceof Error && !err.message.toLowerCase().includes('does not exist')) {
+        throw err;
+      }
+    }
+  }
+
+  const localUsers = readLocalUsers();
+  if (localUsers.some((u) => u.usuario === user.usuario)) {
+    throw new Error('DUPLICATE_USER');
+  }
+  const novo: StoredUser = { ...user, criadoEm };
+  localUsers.push(novo);
+  writeLocalUsers(localUsers);
+  return { created: novo, storageMode: 'local' };
 }
 
 export function getEnvAdminConfig(): { username: string; password: string } | null {
@@ -90,10 +270,15 @@ export function getEnvAdminConfig(): { username: string; password: string } | nu
   return { username, password: pwd };
 }
 
-export function isAdminConfigured(): boolean {
-  if (getEnvAdminConfig()) return true;
-  const users = readStoredUsers();
-  return users.some((u) => u.role === 'admin' || u.usuario === 'admin');
+export async function isAdminConfigured(): Promise<{ configured: boolean; storageMode: UserStorageMode }> {
+  const { users, storageMode } = await listStoredUsers();
+  if (getEnvAdminConfig()) {
+    return { configured: true, storageMode };
+  }
+  return {
+    configured: users.some((u) => u.role === 'admin' || u.usuario === 'admin'),
+    storageMode,
+  };
 }
 
 export type SessionPayload = {

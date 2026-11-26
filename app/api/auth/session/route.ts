@@ -3,7 +3,7 @@ import { getSessionFromRequest, isAdminConfigured } from '@/lib/server-auth';
 
 export async function GET(req: NextRequest) {
   const session = getSessionFromRequest(req);
-  const adminConfigured = isAdminConfigured();
+  const { configured: adminConfigured, storageMode } = await isAdminConfigured();
 
   if (!session) {
     return NextResponse.json({
@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
       usuario: null,
       role: null,
       adminConfigured,
+      storageMode,
     });
   }
 
@@ -19,5 +20,6 @@ export async function GET(req: NextRequest) {
     usuario: session.nome || session.usuario,
     role: session.role,
     adminConfigured,
+    storageMode,
   });
 }

@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   attachSessionCookie,
   createSessionToken,
+  findStoredUser,
   getEnvAdminConfig,
   normalizarUsuario,
-  readStoredUsers,
   timingSafeEqualStr,
   verifyPassword,
   verifySameOriginMutation,
@@ -49,8 +49,7 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
-  const users = readStoredUsers();
-  const encontrado = users.find((u) => u.usuario === usuarioLimpo);
+  const { user: encontrado } = await findStoredUser(usuarioLimpo);
 
   if (!encontrado || !verifyPassword(senha, encontrado.salt, encontrado.hash)) {
     return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });

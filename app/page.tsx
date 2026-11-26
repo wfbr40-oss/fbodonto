@@ -86,6 +86,7 @@ export default function CadastroPage() {
   const [msgUsuarioSucesso, setMsgUsuarioSucesso] = useState('');
   const [erroUsuario, setErroUsuario] = useState('');
   const [usuariosLista, setUsuariosLista] = useState<UsuarioRegistrado[]>([]);
+  const [userStorageMode, setUserStorageMode] = useState<'supabase' | 'local'>('local');
 
   const pref = prefixoDia(esterilizacao);
   const lotesDoDia = historico.filter((l) => l.codigo.startsWith(pref));
@@ -100,14 +101,16 @@ export default function CadastroPage() {
   }, []);
 
   const carregarUsuarios = useCallback(async () => {
-    const lista = await listarUsuarios();
-    setUsuariosLista(lista);
+    const { usuarios, storageMode } = await listarUsuarios();
+    setUsuariosLista(usuarios);
+    setUserStorageMode(storageMode);
   }, []);
 
   useEffect(() => {
-    obterSessaoUsuario().then(({ autenticado: ok, usuario: nome, adminConfigured: configured }) => {
+    obterSessaoUsuario().then(({ autenticado: ok, usuario: nome, adminConfigured: configured, storageMode }) => {
       setAutenticado(ok);
       setAdminConfigured(configured);
+      setUserStorageMode(storageMode);
       setUsuarioConectado(nome || '');
       setCarregandoAuth(false);
       if (ok) {
@@ -191,12 +194,14 @@ export default function CadastroPage() {
         senha: novaSenha,
       });
 
-      setUsuariosLista(await listarUsuarios());
+      const { usuarios, storageMode } = await listarUsuarios();
+      setUsuariosLista(usuarios);
+      setUserStorageMode(storageMode);
       setNovoUsuario('');
       setNovoNome('');
       setNovaSenha('1234');
 
-      setMsgUsuarioSucesso(`Usuário "${res.usuario}" cadastrado com sucesso!`);
+      setMsgUsuarioSucesso(`Usuário "${res.usuario.usuario}" cadastrado com sucesso!`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao cadastrar usuário.';
       setErroUsuario(msg);
@@ -911,10 +916,16 @@ export default function CadastroPage() {
                 <div className="space-y-6">
                   <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
                     <h2 className="text-lg font-bold text-[#3E4546] mb-1">Cadastrar Novo Usuário</h2>
-                    <p className="text-xs text-[#7A8283] mb-5 pb-4 border-b border-[#EDE7E6]">
-                      Crie acessos individuais para dentistas e auxiliares. A senha padrão inicial é{' '}
+                    <p className="text-xs text-[#7A8283] mb-4 pb-4 border-b border-[#EDE7E6]">
+                      Crie acessos individuais para dentistas e auxiliares (login simples sem e-mail). A senha padrão inicial é{' '}
                       <span className="font-mono font-semibold text-[#9E7372]">1234</span>.
                     </p>
+
+                    {isSupabaseConfigured && userStorageMode === 'local' && (
+                      <div className="mb-4 p-3 bg-[#F7F1F1] border border-[#E3D3D2] rounded-lg text-xs text-[#505859]">
+                        <b>Atenção:</b> A tabela <span className="font-mono">usuarios</span> ainda não foi criada no Supabase. Execute o script atualizado em <span className="font-mono">supabase/schema.sql</span> no SQL Editor do Supabase para salvar os usuários na nuvem.
+                      </div>
+                    )}
 
                     <form onSubmit={handleCadastrarUsuario} className="space-y-4">
                       <div>
