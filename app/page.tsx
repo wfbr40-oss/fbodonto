@@ -92,10 +92,6 @@ export default function CadastroPage() {
     e.preventDefault();
     setErroCadastro('');
 
-    if (!item.trim()) {
-      setErroCadastro('Informe o nome do item esterilizado.');
-      return;
-    }
     if (validade < esterilizacao) {
       setErroCadastro('A data de validade não pode ser anterior à data de esterilização.');
       return;
@@ -268,14 +264,13 @@ export default function CadastroPage() {
               <form onSubmit={handleCadastrarLote} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    Nome do Item / Kit Esterilizado *
+                    Nome do Item / Kit Esterilizado (Opcional)
                   </label>
                   <input
                     type="text"
                     value={item}
                     onChange={(e) => setItem(e.target.value)}
-                    required
-                    placeholder="Ex: Kit Clínico Cirúrgico 01"
+                    placeholder="Ex: Kit Clínico Cirúrgico 01 (opcional)"
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
                   />
                 </div>
@@ -390,9 +385,16 @@ export default function CadastroPage() {
                     <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                     <span>Lote {loteCriado.codigo} Cadastrado!</span>
                   </div>
-                  <p className="text-xs text-emerald-700 mb-4">
+                  <p className="text-xs text-emerald-700 mb-3">
                     As {quantidade} etiquetas abaixo estão prontas para impressão ou você pode acessar o link público.
                   </p>
+                  <div className="flex justify-center bg-white/80 rounded-xl p-3 border border-emerald-200 mb-4 overflow-hidden">
+                    <Etiqueta
+                      lote={loteCriado}
+                      larguraMm={config.larguraMm}
+                      alturaMm={config.alturaMm}
+                    />
+                  </div>
                   <div className="flex space-x-2">
                     <button
                       onClick={() => window.print()}
@@ -441,7 +443,7 @@ export default function CadastroPage() {
                     {historico.map((l) => (
                       <tr key={l.codigo} className="hover:bg-slate-50">
                         <td className="p-3 font-mono font-bold text-slate-900">{l.codigo}</td>
-                        <td className="p-3 font-semibold">{l.item}</td>
+                        <td className="p-3 font-semibold">{l.item || <span className="text-slate-400 font-normal italic">—</span>}</td>
                         <td className="p-3">{formatDataBR(l.esterilizacao)}</td>
                         <td className="p-3">{formatDataBR(l.validade)}</td>
                         <td className="p-3 text-slate-600">{l.responsavel}</td>

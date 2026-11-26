@@ -4,10 +4,17 @@
   body {
     background: white !important;
     color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   
   .no-print {
     display: none !important;
+  }
+
+  .etiqueta-item {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   @page {

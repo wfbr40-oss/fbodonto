@@ -43,10 +43,12 @@ export default function CartaoLote({ lote, logo, nomeConsultorio = "FB Odonto" }
 
       <div className="grid grid-cols-3 gap-6 mb-6">
         <div className="col-span-2 space-y-4">
-          <div>
-            <div className="text-xs uppercase tracking-wider text-slate-500 font-bold mb-1">Item Esterilizado</div>
-            <div className="text-xl font-bold text-slate-900">{lote.item}</div>
-          </div>
+          {lote.item?.trim() ? (
+            <div>
+              <div className="text-xs uppercase tracking-wider text-slate-500 font-bold mb-1">Item Esterilizado</div>
+              <div className="text-xl font-bold text-slate-900">{lote.item}</div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-slate-50 p-3 rounded border border-slate-200">

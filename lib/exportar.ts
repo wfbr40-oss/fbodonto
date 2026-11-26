@@ -19,7 +19,7 @@ export function textoDoLote(l: Lote): string {
   const link = buildLink(l.codigo);
   return [
     `Lote: ${l.codigo}`,
-    `Item: ${l.item}`,
+    ...(l.item?.trim() ? [`Item: ${l.item}`] : []),
     `Esterilização: ${formatDataBR(l.esterilizacao)}`,
     `Validade: ${formatDataBR(l.validade)}`,
     `Responsável: ${l.responsavel}`,
@@ -37,9 +37,11 @@ export async function copiarTextoEImagem(l: Lote, imagem: Blob): Promise<void> {
     reader.readAsDataURL(imagem);
   });
 
+  const itemHtml = l.item?.trim() ? `<p><b>Item:</b> ${l.item}</p>` : '';
+
   const htmlContent = `<div>
     <p><b>Lote:</b> ${l.codigo}</p>
-    <p><b>Item:</b> ${l.item}</p>
+    ${itemHtml}
     <p><b>Esterilização:</b> ${formatDataBR(l.esterilizacao)}</p>
     <p><b>Validade:</b> ${formatDataBR(l.validade)}</p>
     <p><b>Responsável:</b> ${l.responsavel}</p>
