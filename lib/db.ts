@@ -1,85 +1,29 @@
-import { createClient } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { Lote, prefixoDia, proximoCodigo } from './lote';
 
 const MOCK_LOTES_KEY = 'fb_odonto_mock_lotes_v1';
-const MOCK_AUTH_KEY = 'fb_odonto_mock_auth_v1';
-const MOCK_USERS_KEY = 'fb_odonto_mock_users_v1';
-const SUPABASE_AUTH_DOMAIN = 'fbodonto.com.br';
-const SHORT_PASSWORD_SUFFIX = '__fbodonto';
+
+// Token mantido exclusivamente em memória para complementar o cookie HttpOnly no preview/iframe
+let memoryAuthToken: string | null = null;
 
 export type UsuarioRegistrado = {
   usuario: string;
   nome: string;
-  criadoEm: string;
-  requerConfirmacao?: boolean;
-};
-
-type UsuarioLocal = {
-  usuario: string;
-  nome: string;
-  senha: string;
+  role?: 'admin' | 'operador';
   criadoEm: string;
 };
 
-function normalizarUsuario(usuario: string): string {
-  return usuario.trim().toLowerCase().replace(/\s+/g, '');
-}
-
-function toEmailAuth(usuarioLimpo: string): string {
-  return usuarioLimpo.includes('@') ? usuarioLimpo : `${usuarioLimpo}@${SUPABASE_AUTH_DOMAIN}`;
-}
-
-function normalizarSenhaSupabase(senha: string): string {
-  return senha.length < 6 ? `${senha}${SHORT_PASSWORD_SUFFIX}` : senha;
-}
-
-function criarClienteEfemero() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
-  const supabaseKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_ANON_KEY ||
-    '';
-
-  return createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-}
-
-function getMockUsers(): UsuarioLocal[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(MOCK_USERS_KEY);
-    if (raw) {
-      return JSON.parse(raw) as UsuarioLocal[];
-    }
-  } catch {
-    // ignore parse error
+function authHeaders(includeContentType = false): HeadersInit {
+  const headers: Record<string, string> = {
+    'X-Requested-With': 'XMLHttpRequest',
+  };
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
   }
-  const inicial: UsuarioLocal[] = [
-    {
-      usuario: 'admin',
-      nome: 'Administrador',
-      senha: 'admin',
-      criadoEm: new Date().toISOString(),
-    },
-  ];
-  try {
-    localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(inicial));
-  } catch {}
-  return inicial;
-}
-
-function saveMockUsers(users: UsuarioLocal[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(users));
-  } catch {}
+  if (memoryAuthToken) {
+    headers['Authorization'] = `Bearer ${memoryAuthToken}`;
+  }
+  return headers;
 }
 
 function getMockLotes(): Lote[] {
@@ -185,8 +129,12 @@ export async function criarLote(d: Omit<Lote, 'codigo'>): Promise<Lote> {
       if (error.code === '23505') {
         tentativas++;
         continue;
+      } else if (error.code === '42501' || error.message.toLowerCase().includes('row-level security')) {
+        throw new Error(
+          'O Supabase bloqueou a gravação pela política RLS da tabela lotes. Execute o script atualizado em supabase/schema.sql no SQL Editor do Supabase.'
+        );
       } else {
-        throw new Error(`Erro ao salvar no Supabase (RLS/Auth): ${error.message}.`);
+        throw new Error(`Erro ao salvar no Supabase: ${error.message}.`);
       }
     } else {
       if (lotesLocais.some((l) => l.codigo === proximo)) {
@@ -225,85 +173,38 @@ export async function listarRecentes(): Promise<Lote[]> {
   }
 }
 
-export async function login(usuario: string, senha: string): Promise<string> {
-  const usuarioLimpo = normalizarUsuario(usuario);
-  if (!usuarioLimpo || !senha) {
-    throw new Error('Preencha usuário e senha.');
-  }
-
-  if (!isSupabaseConfigured) {
-    const users = getMockUsers();
-    const encontrado = users.find((u) => u.usuario === usuarioLimpo && u.senha === senha);
-    if (!encontrado) {
-      throw new Error('Usuário ou senha inválidos.');
-    }
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(
-        MOCK_AUTH_KEY,
-        JSON.stringify({ usuario: encontrado.usuario, nome: encontrado.nome })
-      );
-    }
-    return encontrado.nome || encontrado.usuario;
-  }
-
-  const emailAuth = toEmailAuth(usuarioLimpo);
-  const senhaNormalizada = normalizarSenhaSupabase(senha);
-
-  let { data, error } = await supabase.auth.signInWithPassword({
-    email: emailAuth,
-    password: senhaNormalizada,
+export async function configurarAdminInicial(usuario: string, senha: string): Promise<string> {
+  const res = await fetch('/api/auth/setup', {
+    method: 'POST',
+    headers: authHeaders(true),
+    credentials: 'include',
+    body: JSON.stringify({ usuario, senha }),
   });
 
-  // Fallback para senhas >= 6 criadas diretamente no painel do Supabase
-  if (error && senhaNormalizada !== senha) {
-    const retryDirect = await supabase.auth.signInWithPassword({
-      email: emailAuth,
-      password: senha,
-    });
-    if (!retryDirect.error) {
-      data = retryDirect.data;
-      error = null;
-    }
+  const payload = await res.json();
+  if (!res.ok) {
+    throw new Error(payload.error || 'Erro ao configurar acesso inicial.');
   }
 
-  // Bootstrap automático apenas para o usuário padrão admin / admin caso ainda não exista no Supabase
-  if (error && usuarioLimpo === 'admin' && senha === 'admin' && !error.message.toLowerCase().includes('confirmed')) {
-    const signUpRes = await supabase.auth.signUp({
-      email: emailAuth,
-      password: senhaNormalizada,
-      options: {
-        data: { username: 'admin', nome: 'Administrador', role: 'admin' },
-      },
-    });
-    if (!signUpRes.error && signUpRes.data.user && signUpRes.data.session) {
-      data = { user: signUpRes.data.user, session: signUpRes.data.session };
-      error = null;
-    } else if (!signUpRes.error && signUpRes.data.user && !signUpRes.data.session) {
-      throw new Error(
-        'Usuário admin criado no Supabase, mas o login aguarda confirmação de e-mail. Desative "Confirm email" em Authentication > Providers > Email no painel do Supabase ou execute o SQL de confirmação.'
-      );
-    }
+  memoryAuthToken = payload.token || null;
+  return payload.usuario || usuario;
+}
+
+export async function login(usuario: string, senha: string): Promise<string> {
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: authHeaders(true),
+    credentials: 'include',
+    body: JSON.stringify({ usuario, senha }),
+  });
+
+  const payload = await res.json();
+  if (!res.ok) {
+    throw new Error(payload.error || 'Usuário ou senha inválidos.');
   }
 
-  if (error) {
-    if (error.message.toLowerCase().includes('email not confirmed')) {
-      throw new Error(
-        'O usuário existe no Supabase, mas o e-mail ainda não foi confirmado. Desative "Confirm email" em Authentication > Providers > Email no painel do Supabase.'
-      );
-    }
-    throw new Error('Usuário ou senha inválidos no Supabase.');
-  }
-
-  const nomeExibicao =
-    (data.user?.user_metadata?.nome as string) ||
-    (data.user?.user_metadata?.username as string) ||
-    usuarioLimpo;
-
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(MOCK_AUTH_KEY, JSON.stringify({ usuario: usuarioLimpo, nome: nomeExibicao }));
-  }
-
-  return nomeExibicao;
+  memoryAuthToken = payload.token || null;
+  return payload.usuario || usuario;
 }
 
 export async function cadastrarUsuario(params: {
@@ -311,132 +212,67 @@ export async function cadastrarUsuario(params: {
   nome?: string;
   senha?: string;
 }): Promise<UsuarioRegistrado> {
-  const usuarioLimpo = normalizarUsuario(params.usuario);
-  const nomeLimpo = params.nome?.trim() || usuarioLimpo;
-  const senhaFinal = (params.senha ?? '1234').trim() || '1234';
-
-  if (!usuarioLimpo || usuarioLimpo.length < 2) {
-    throw new Error('Informe um nome de usuário válido (mínimo 2 caracteres).');
-  }
-
-  if (senhaFinal.length < 4) {
-    throw new Error('A senha deve ter pelo menos 4 caracteres.');
-  }
-
-  if (!isSupabaseConfigured) {
-    const users = getMockUsers();
-    if (users.some((u) => u.usuario === usuarioLimpo)) {
-      throw new Error('Este usuário já está cadastrado.');
-    }
-    const novo: UsuarioLocal = {
-      usuario: usuarioLimpo,
-      nome: nomeLimpo,
-      senha: senhaFinal,
-      criadoEm: new Date().toISOString(),
-    };
-    users.push(novo);
-    saveMockUsers(users);
-    return {
-      usuario: novo.usuario,
-      nome: novo.nome,
-      criadoEm: novo.criadoEm,
-      requerConfirmacao: false,
-    };
-  }
-
-  const emailAuth = toEmailAuth(usuarioLimpo);
-  const senhaSupabase = normalizarSenhaSupabase(senhaFinal);
-  const clientEfemero = criarClienteEfemero();
-
-  const { data, error } = await clientEfemero.auth.signUp({
-    email: emailAuth,
-    password: senhaSupabase,
-    options: {
-      data: {
-        username: usuarioLimpo,
-        nome: nomeLimpo,
-        role: 'operador',
-      },
-    },
+  const res = await fetch('/api/auth/usuarios', {
+    method: 'POST',
+    headers: authHeaders(true),
+    credentials: 'include',
+    body: JSON.stringify(params),
   });
 
-  if (error) {
-    if (error.message.toLowerCase().includes('already registered')) {
-      throw new Error('Este usuário já está cadastrado no Supabase.');
-    }
-    throw new Error(`Erro ao cadastrar usuário no Supabase: ${error.message}`);
+  const payload = await res.json();
+  if (!res.ok) {
+    throw new Error(payload.error || 'Erro ao cadastrar usuário.');
   }
 
-  const registrado: UsuarioRegistrado = {
-    usuario: usuarioLimpo,
-    nome: nomeLimpo,
-    criadoEm: new Date().toISOString(),
-    requerConfirmacao: Boolean(data.user && !data.session),
-  };
-
-  // Mantém registro local auxiliar para exibição na tela de configurações
-  const users = getMockUsers();
-  if (!users.some((u) => u.usuario === usuarioLimpo)) {
-    users.push({
-      usuario: usuarioLimpo,
-      nome: nomeLimpo,
-      senha: '',
-      criadoEm: registrado.criadoEm,
-    });
-    saveMockUsers(users);
-  }
-
-  return registrado;
+  return payload.usuario as UsuarioRegistrado;
 }
 
-export function listarUsuariosLocais(): UsuarioRegistrado[] {
-  return getMockUsers().map((u) => ({
-    usuario: u.usuario,
-    nome: u.nome,
-    criadoEm: u.criadoEm,
-  }));
+export async function listarUsuarios(): Promise<UsuarioRegistrado[]> {
+  const res = await fetch('/api/auth/usuarios', {
+    method: 'GET',
+    headers: authHeaders(false),
+    credentials: 'include',
+  });
+
+  if (!res.ok) return [];
+  const payload = await res.json();
+  return (payload.usuarios as UsuarioRegistrado[]) || [];
 }
 
 export async function logout(): Promise<void> {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(MOCK_AUTH_KEY);
-  }
-  if (isSupabaseConfigured) {
-    await supabase.auth.signOut();
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: authHeaders(false),
+      credentials: 'include',
+    });
+  } finally {
+    memoryAuthToken = null;
   }
 }
 
-export async function obterSessaoUsuario(): Promise<{ autenticado: boolean; usuario: string | null }> {
-  if (!isSupabaseConfigured) {
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem(MOCK_AUTH_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as { usuario?: string; nome?: string };
-          return {
-            autenticado: true,
-            usuario: parsed.nome || parsed.usuario || 'admin',
-          };
-        }
-      } catch {}
-    }
-    return { autenticado: false, usuario: null };
-  }
-
+export async function obterSessaoUsuario(): Promise<{
+  autenticado: boolean;
+  usuario: string | null;
+  adminConfigured: boolean;
+}> {
   try {
-    const { data } = await supabase.auth.getSession();
-    const session = data.session;
-    if (!session) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(MOCK_AUTH_KEY);
-      }
-      return { autenticado: false, usuario: null };
+    const res = await fetch('/api/auth/session', {
+      method: 'GET',
+      headers: authHeaders(false),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      return { autenticado: false, usuario: null, adminConfigured: true };
     }
-    const meta = session.user?.user_metadata as { nome?: string; username?: string } | undefined;
-    const nome = meta?.nome || meta?.username || session.user?.email?.split('@')[0] || 'Usuário';
-    return { autenticado: true, usuario: nome };
+    const payload = await res.json();
+    return {
+      autenticado: Boolean(payload.autenticado),
+      usuario: payload.usuario || null,
+      adminConfigured: Boolean(payload.adminConfigured),
+    };
   } catch {
-    return { autenticado: false, usuario: null };
+    return { autenticado: false, usuario: null, adminConfigured: true };
   }
 }
 

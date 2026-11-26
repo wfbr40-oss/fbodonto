@@ -9,8 +9,9 @@ import {
   login,
   logout,
   obterSessaoUsuario,
+  configurarAdminInicial,
   cadastrarUsuario,
-  listarUsuariosLocais,
+  listarUsuarios,
   UsuarioRegistrado,
 } from '@/lib/db';
 import { carregarConfig, salvarConfig, Config } from '@/lib/config';
@@ -41,11 +42,14 @@ type SubAbaConfig = 'geral' | 'usuarios';
 
 export default function CadastroPage() {
   const [autenticado, setAutenticado] = useState<boolean>(false);
+  const [adminConfigured, setAdminConfigured] = useState<boolean>(true);
   const [usuarioConectado, setUsuarioConectado] = useState<string>('');
   const [carregandoAuth, setCarregandoAuth] = useState<boolean>(true);
 
   const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');
+  const [setupUsuario, setSetupUsuario] = useState('admin');
+  const [setupSenha, setSetupSenha] = useState('');
   const [erroLogin, setErroLogin] = useState('');
 
   const [config, setConfig] = useState<Config>(carregarConfig());
@@ -95,17 +99,39 @@ export default function CadastroPage() {
     setCarregandoHistorico(false);
   }, []);
 
+  const carregarUsuarios = useCallback(async () => {
+    const lista = await listarUsuarios();
+    setUsuariosLista(lista);
+  }, []);
+
   useEffect(() => {
-    obterSessaoUsuario().then(({ autenticado: ok, usuario: nome }) => {
+    obterSessaoUsuario().then(({ autenticado: ok, usuario: nome, adminConfigured: configured }) => {
       setAutenticado(ok);
+      setAdminConfigured(configured);
       setUsuarioConectado(nome || '');
       setCarregandoAuth(false);
       if (ok) {
         carregarDadosHistorico();
-        setUsuariosLista(listarUsuariosLocais());
+        carregarUsuarios();
       }
     });
-  }, [carregarDadosHistorico]);
+  }, [carregarDadosHistorico, carregarUsuarios]);
+
+  const handleSetupAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroLogin('');
+    try {
+      const nome = await configurarAdminInicial(setupUsuario, setupSenha);
+      setAdminConfigured(true);
+      setAutenticado(true);
+      setUsuarioConectado(nome);
+      carregarDadosHistorico();
+      carregarUsuarios();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao configurar acesso inicial';
+      setErroLogin(msg);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,8 +140,8 @@ export default function CadastroPage() {
       const nome = await login(usuario, senha);
       setAutenticado(true);
       setUsuarioConectado(nome);
-      setUsuariosLista(listarUsuariosLocais());
       carregarDadosHistorico();
+      carregarUsuarios();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao autenticar';
       setErroLogin(msg);
@@ -165,18 +191,12 @@ export default function CadastroPage() {
         senha: novaSenha,
       });
 
-      setUsuariosLista(listarUsuariosLocais());
+      setUsuariosLista(await listarUsuarios());
       setNovoUsuario('');
       setNovoNome('');
       setNovaSenha('1234');
 
-      if (res.requerConfirmacao) {
-        setMsgUsuarioSucesso(
-          `Usuário "${res.usuario}" cadastrado no Supabase com a senha informada. Caso o login solicite confirmação de e-mail, desative "Confirm email" em Authentication > Providers > Email no painel do Supabase.`
-        );
-      } else {
-        setMsgUsuarioSucesso(`Usuário "${res.usuario}" cadastrado com sucesso!`);
-      }
+      setMsgUsuarioSucesso(`Usuário "${res.usuario}" cadastrado com sucesso!`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao cadastrar usuário.';
       setErroUsuario(msg);
@@ -253,46 +273,97 @@ export default function CadastroPage() {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Usuário</label>
-              <input
-                type="text"
-                value={usuario}
-                onChange={(e) => setUsuario(e.target.value)}
-                required
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
-                placeholder="Ex: admin"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Senha</label>
-              <input
-                type="password"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                required
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
-                placeholder="••••••••"
-              />
-            </div>
-
-            {erroLogin && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{erroLogin}</span>
+          {!adminConfigured ? (
+            <form onSubmit={handleSetupAdmin} className="space-y-4">
+              <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg text-xs text-sky-900">
+                <b>Primeiro Acesso:</b> Defina a senha inicial do usuário administrador para ativar o sistema.
               </div>
-            )}
 
-            <button
-              type="submit"
-              className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg shadow transition flex items-center justify-center space-x-2 cursor-pointer"
-            >
-              <LogIn className="w-5 h-5" />
-              <span>Entrar no Sistema</span>
-            </button>
-          </form>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Usuário Administrador
+                </label>
+                <input
+                  type="text"
+                  value={setupUsuario}
+                  onChange={(e) => setSetupUsuario(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Senha Inicial
+                </label>
+                <input
+                  type="password"
+                  value={setupSenha}
+                  onChange={(e) => setSetupSenha(e.target.value)}
+                  required
+                  minLength={4}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                  placeholder="Mínimo 4 caracteres (ex: admin)"
+                />
+              </div>
+
+              {erroLogin && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{erroLogin}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg shadow transition flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                <LogIn className="w-5 h-5" />
+                <span>Ativar Acesso e Entrar</span>
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Usuário</label>
+                <input
+                  type="text"
+                  value={usuario}
+                  onChange={(e) => setUsuario(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                  placeholder="Ex: admin"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Senha</label>
+                <input
+                  type="password"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-slate-900"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              {erroLogin && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{erroLogin}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg shadow transition flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                <LogIn className="w-5 h-5" />
+                <span>Entrar no Sistema</span>
+              </button>
+            </form>
+          )}
         </div>
       </main>
     );
