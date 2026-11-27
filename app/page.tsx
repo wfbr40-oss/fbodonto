@@ -2,7 +2,16 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { Lote, hojeISO, addDias, formatDataBR, prefixoDia, proximoCodigo } from '@/lib/lote';
+import {
+  Lote,
+  TurnoLote,
+  hojeISO,
+  addDias,
+  formatDataBR,
+  prefixoDia,
+  proximoCodigo,
+  codigoPorTurno,
+} from '@/lib/lote';
 import {
   criarLote,
   listarRecentes,
@@ -12,9 +21,11 @@ import {
   configurarAdminInicial,
   cadastrarUsuario,
   listarUsuarios,
+  carregarConfigNuvem,
+  salvarConfigNuvem,
   UsuarioRegistrado,
 } from '@/lib/db';
-import { carregarConfig, salvarConfig, Config } from '@/lib/config';
+import { carregarConfig, Config, RegraNumeracao } from '@/lib/config';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import Etiqueta from '@/components/Etiqueta';
 import LeitorQrCode from '@/components/LeitorQrCode';
@@ -53,6 +64,9 @@ export default function CadastroPage() {
   const [erroLogin, setErroLogin] = useState('');
 
   const [config, setConfig] = useState<Config>(carregarConfig());
+  const [configStorageMode, setConfigStorageMode] = useState<'supabase' | 'local'>('local');
+  const [salvandoConfig, setSalvandoConfig] = useState<boolean>(false);
+  const [erroConfig, setErroConfig] = useState<string>('');
   const [abaAtiva, setAbaAtiva] = useState<AbaPrincipal>('novo');
   const [subAbaLote, setSubAbaLote] = useState<SubAbaLote>('cadastro');
   const [subAbaConfig, setSubAbaConfig] = useState<SubAbaConfig>('geral');
@@ -65,6 +79,7 @@ export default function CadastroPage() {
   const [diasValidade, setDiasValidade] = useState<number>(config.diasValidade);
   const [responsavel, setResponsavel] = useState('');
   const [quantidade, setQuantidade] = useState<number>(1);
+  const [turnoSelecionado, setTurnoSelecionado] = useState<TurnoLote>('auto');
 
   const validade = addDias(esterilizacao, diasValidade);
 
@@ -91,7 +106,13 @@ export default function CadastroPage() {
   const pref = prefixoDia(esterilizacao);
   const lotesDoDia = historico.filter((l) => l.codigo.startsWith(pref));
   const ultimo = lotesDoDia.length > 0 ? lotesDoDia[0].codigo : null;
-  const proximoCodPrevisto = proximoCodigo(pref, ultimo) || `${pref}01`;
+  const turnoCalculado =
+    config.regraNumeracao === 'turno_manha_tarde'
+      ? codigoPorTurno(pref, turnoSelecionado, config.horaCorteTarde)
+      : null;
+  const proximoCodPrevisto = turnoCalculado
+    ? turnoCalculado.codigo
+    : proximoCodigo(pref, ultimo) || `${pref}01`;
 
   const carregarDadosHistorico = useCallback(async () => {
     setCarregandoHistorico(true);
@@ -107,6 +128,11 @@ export default function CadastroPage() {
   }, []);
 
   useEffect(() => {
+    carregarConfigNuvem().then(({ config: cfg, storageMode }) => {
+      setConfig(cfg);
+      setDiasValidade(cfg.diasValidade);
+      setConfigStorageMode(storageMode);
+    });
     obterSessaoUsuario().then(({ autenticado: ok, usuario: nome, adminConfigured: configured, storageMode }) => {
       setAutenticado(ok);
       setAdminConfigured(configured);
@@ -174,11 +200,28 @@ export default function CadastroPage() {
     setSidebarMobile(false);
   };
 
-  const handleSalvarConfig = (e: React.FormEvent) => {
+  const handleSalvarConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    salvarConfig(config);
-    setMsgConfigSalva('Configurações salvas com sucesso.');
-    setTimeout(() => setMsgConfigSalva(''), 3500);
+    setErroConfig('');
+    setMsgConfigSalva('');
+    setSalvandoConfig(true);
+    try {
+      const { config: salva, storageMode } = await salvarConfigNuvem(config);
+      setConfig(salva);
+      setDiasValidade(salva.diasValidade);
+      setConfigStorageMode(storageMode);
+      setMsgConfigSalva(
+        storageMode === 'supabase'
+          ? 'Configurações salvas no Supabase com sucesso.'
+          : 'Configurações salvas localmente. Execute supabase/schema.sql para sincronizar na nuvem.'
+      );
+      setTimeout(() => setMsgConfigSalva(''), 4000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar configurações.';
+      setErroConfig(msg);
+    } finally {
+      setSalvandoConfig(false);
+    }
   };
 
   const handleCadastrarUsuario = async (e: React.FormEvent) => {
@@ -221,12 +264,19 @@ export default function CadastroPage() {
 
     setSalvando(true);
     try {
-      const novo = await criarLote({
-        item: item.trim(),
-        esterilizacao,
-        validade,
-        responsavel: responsavel.trim() || usuarioConectado || 'Equipe',
-      });
+      const novo = await criarLote(
+        {
+          item: item.trim(),
+          esterilizacao,
+          validade,
+          responsavel: responsavel.trim() || usuarioConectado || 'Equipe',
+        },
+        {
+          regraNumeracao: config.regraNumeracao,
+          turno: turnoSelecionado,
+          horaCorteTarde: config.horaCorteTarde,
+        }
+      );
       setLoteCriado(novo);
       await carregarDadosHistorico();
       setItem('');
@@ -556,6 +606,11 @@ export default function CadastroPage() {
                       <h2 className="text-lg font-bold text-[#3E4546]">Novo Lote de Esterilização</h2>
                       <span className="text-xs font-mono tabular-nums text-[#7A8283]">
                         Próximo código: <strong className="text-[#9E7372]">{proximoCodPrevisto}</strong>
+                        {turnoCalculado ? (
+                          <span className="font-sans text-[#6E7677] ml-1.5">
+                            · {turnoCalculado.turnoEfetivo === 'manha' ? 'Manhã (01)' : 'Tarde (02)'}
+                          </span>
+                        ) : null}
                       </span>
                     </div>
 
@@ -640,13 +695,14 @@ export default function CadastroPage() {
 
                       <div>
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
-                          Responsável Técnico (Opcional)
+                          Responsável Técnico *
                         </label>
                         <input
                           type="text"
                           value={responsavel}
                           onChange={(e) => setResponsavel(e.target.value)}
-                          placeholder="Nome do profissional (opcional)"
+                          placeholder="Nome do profissional (obrigatório)"
+                          required
                           className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
                         />
                       </div>
@@ -661,9 +717,9 @@ export default function CadastroPage() {
                       <button
                         type="submit"
                         disabled={salvando}
-                        className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
+                        className="w-full py-3 px-3 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white font-semibold rounded-lg transition flex items-center justify-center gap-1.5 text-xs sm:text-sm cursor-pointer"
                       >
-                        <PlusCircle className="w-5 h-5 text-[#CDA9A8]" />
+                        <PlusCircle className="w-[20px] h-[20px] sm:w-[22px] sm:h-[22px] text-[#CDA9A8] shrink-0" />
                         <span>{salvando ? 'Cadastrando...' : 'Cadastrar Lote e Gerar Etiquetas'}</span>
                       </button>
                     </form>
@@ -837,6 +893,19 @@ export default function CadastroPage() {
                     Configurações de Impressão e Consultório
                   </h2>
 
+                  {isSupabaseConfigured && configStorageMode === 'local' && (
+                    <div className="mb-4 p-3 bg-[#F7F1F1] border border-[#E3D3D2] rounded-lg text-xs text-[#505859]">
+                      <b>Atenção:</b> A tabela <span className="font-mono">configuracoes</span> ainda não foi criada no Supabase. Execute o script atualizado em <span className="font-mono">supabase/schema.sql</span> no SQL Editor do Supabase para salvar na nuvem.
+                    </div>
+                  )}
+
+                  {erroConfig && (
+                    <div className="mb-4 p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] rounded-lg text-xs font-semibold flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{erroConfig}</span>
+                    </div>
+                  )}
+
                   {msgConfigSalva && (
                     <div className="mb-4 p-3 bg-[#EDF5F0] border border-[#C8DFCF] text-[#2E6045] rounded-lg text-xs font-semibold flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -904,11 +973,70 @@ export default function CadastroPage() {
                       />
                     </div>
 
+                    <div className="pt-2 border-t border-[#EDE7E6] space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
+                          Regra de Numeração do Lote
+                        </label>
+                        <select
+                          value={config.regraNumeracao}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              regraNumeracao: e.target.value as RegraNumeracao,
+                            })
+                          }
+                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
+                        >
+                          <option value="turno_manha_tarde">
+                            Por turno (Manhã = 01 / Tarde = 02)
+                          </option>
+                          <option value="sequencial">
+                            Sequencial diário (01, 02, 03...)
+                          </option>
+                        </select>
+                        <span className="text-[11px] text-[#7A8283] mt-1 block">
+                          {config.regraNumeracao === 'turno_manha_tarde'
+                            ? 'Gera apenas final 01 no turno da manhã e final 02 no turno da tarde.'
+                            : 'Incrementa sequencialmente a cada novo lote cadastrado no mesmo dia.'}
+                        </span>
+                      </div>
+
+                      {config.regraNumeracao === 'turno_manha_tarde' && (
+                        <div>
+                          <label className="block text-xs font-semibold text-[#505859] mb-1.5">
+                            Horário de troca para Tarde (02)
+                          </label>
+                          <select
+                            value={config.horaCorteTarde}
+                            onChange={(e) =>
+                              setConfig({
+                                ...config,
+                                horaCorteTarde: Number(e.target.value),
+                              })
+                            }
+                            className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
+                          >
+                            {Array.from({ length: 24 }).map((_, h) => (
+                              <option key={h} value={h}>
+                                {String(h).padStart(2, '0')}:00
+                              </option>
+                            ))}
+                          </select>
+                          <span className="text-[11px] text-[#7A8283] mt-1 block">
+                            Antes das {String(config.horaCorteTarde).padStart(2, '0')}:00 usa final 01; a partir das{' '}
+                            {String(config.horaCorteTarde).padStart(2, '0')}:00 usa final 02.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
                     <button
                       type="submit"
-                      className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition cursor-pointer"
+                      disabled={salvandoConfig}
+                      className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white font-semibold rounded-lg transition cursor-pointer"
                     >
-                      Salvar Configurações
+                      {salvandoConfig ? 'Salvando...' : 'Salvar Configurações'}
                     </button>
                   </form>
                 </div>

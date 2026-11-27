@@ -1,19 +1,25 @@
+export type RegraNumeracao = 'turno_manha_tarde' | 'sequencial';
+
 export type Config = {
   nomeConsultorio: string;
   larguraMm: number;
   alturaMm: number;
-  modo: "avulsa" | "a4";
+  modo: 'avulsa' | 'a4';
   diasValidade: number;
+  regraNumeracao: RegraNumeracao;
+  horaCorteTarde: number;
 };
 
-const CONFIG_KEY = "fb_odonto_config_v1";
+const CONFIG_KEY = 'fb_odonto_config_v1';
 
 export const CONFIG_PADRAO: Config = {
-  nomeConsultorio: "FB Odonto",
+  nomeConsultorio: 'FB Odonto',
   larguraMm: 50,
   alturaMm: 30,
-  modo: "avulsa",
+  modo: 'avulsa',
   diasValidade: 30,
+  regraNumeracao: 'turno_manha_tarde',
+  horaCorteTarde: 12,
 };
 
 export function carregarConfig(): Config {
@@ -25,7 +31,7 @@ export function carregarConfig(): Config {
       return { ...CONFIG_PADRAO, ...parsed };
     }
   } catch (e) {
-    console.error("Erro ao carregar config:", e);
+    console.error('Erro ao carregar config:', e);
   }
   return CONFIG_PADRAO;
 }
@@ -35,6 +41,6 @@ export function salvarConfig(c: Config): void {
   try {
     localStorage.setItem(CONFIG_KEY, JSON.stringify(c));
   } catch (e) {
-    console.error("Erro ao salvar config:", e);
+    console.error('Erro ao salvar config:', e);
   }
 }

@@ -7,13 +7,47 @@ export type Lote = {
   criado_em?: string;
 };
 
+export type TurnoLote = 'auto' | 'manha' | 'tarde';
+
 export function prefixoDia(iso: string): string {
   return iso.replace(/-/g, '');
 }
 
+export function turnoAtual(horaCorteTarde = 12, agora = new Date()): 'manha' | 'tarde' {
+  let hora = agora.getHours();
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      hour: 'numeric',
+      hour12: false,
+    });
+    const horaStr = formatter.format(agora);
+    const h = parseInt(horaStr, 10);
+    if (!isNaN(h)) {
+      hora = h;
+    }
+  } catch {
+    // fallback to device hour
+  }
+  return hora < horaCorteTarde ? 'manha' : 'tarde';
+}
+
+export function codigoPorTurno(
+  prefixo: string,
+  turno: TurnoLote = 'auto',
+  horaCorteTarde = 12
+): { codigo: string; turnoEfetivo: 'manha' | 'tarde' } {
+  const turnoEfetivo = turno === 'auto' ? turnoAtual(horaCorteTarde) : turno;
+  const sufixo = turnoEfetivo === 'manha' ? '01' : '02';
+  return {
+    codigo: `${prefixo}${sufixo}`,
+    turnoEfetivo,
+  };
+}
+
 export function proximoCodigo(prefixo: string, ultimo: string | null): string | null {
   if (!ultimo) {
-    return prefixo + "01";
+    return prefixo + '01';
   }
   const seqStr = ultimo.slice(8);
   const seq = parseInt(seqStr, 10);
@@ -69,6 +103,6 @@ export function hojeISO(): string {
   return `${y}-${m}-${d}`;
 }
 
-export function statusValidade(l: Lote, hoje = hojeISO()): "valido" | "vencido" {
-  return l.validade >= hoje ? "valido" : "vencido";
+export function statusValidade(l: Lote, hoje = hojeISO()): 'valido' | 'vencido' {
+  return l.validade >= hoje ? 'valido' : 'vencido';
 }

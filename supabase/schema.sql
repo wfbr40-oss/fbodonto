@@ -54,6 +54,41 @@ create policy "Permitir atualizacao de usuarios"
   on public.usuarios for update
   using (true);
 
+-- Tabela de configurações do consultório, etiqueta, validade e regra de numeração
+create table if not exists public.configuracoes (
+  id text primary key default 'default',
+  nome_consultorio text not null default 'FB Odonto',
+  largura_mm integer not null default 50 check (largura_mm between 20 and 150),
+  altura_mm integer not null default 30 check (altura_mm between 15 and 100),
+  modo text not null default 'avulsa' check (modo in ('avulsa', 'a4')),
+  dias_validade integer not null default 30 check (dias_validade between 1 and 365),
+  regra_numeracao text not null default 'turno_manha_tarde' check (regra_numeracao in ('turno_manha_tarde', 'sequencial')),
+  hora_corte_tarde integer not null default 12 check (hora_corte_tarde between 0 and 23),
+  atualizado_em timestamptz not null default now()
+);
+
+-- Habilitar RLS para configurações
+alter table public.configuracoes enable row level security;
+
+drop policy if exists "Permitir leitura de configuracoes" on public.configuracoes;
+create policy "Permitir leitura de configuracoes"
+  on public.configuracoes for select
+  using (true);
+
+drop policy if exists "Permitir insercao de configuracoes" on public.configuracoes;
+create policy "Permitir insercao de configuracoes"
+  on public.configuracoes for insert
+  with check (true);
+
+drop policy if exists "Permitir atualizacao de configuracoes" on public.configuracoes;
+create policy "Permitir atualizacao de configuracoes"
+  on public.configuracoes for update
+  using (true);
+
+insert into public.configuracoes (id)
+values ('default')
+on conflict (id) do nothing;
+
 -- Configuração do Storage para a logo (bucket público 'config')
 insert into storage.buckets (id, name, public)
 values ('config', 'config', true)

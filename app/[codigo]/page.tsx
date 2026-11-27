@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Lote } from '@/lib/lote';
-import { getLote } from '@/lib/db';
+import { getLote, carregarConfigNuvem } from '@/lib/db';
 import { carregarLogo } from '@/lib/logo';
 import { gerarImagem, copiarTextoEImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
 import CartaoLote from '@/components/CartaoLote';
@@ -18,12 +18,12 @@ export default function LeituraLotePage() {
 
   const [lote, setLote] = useState<Lote | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
+  const [nomeConsultorio, setNomeConsultorio] = useState<string>(() => carregarConfig().nomeConsultorio);
   const [carregando, setCarregando] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
 
   const [msgCopia, setMsgCopia] = useState<string | null>(null);
   const [processando, setProcessando] = useState<boolean>(false);
-  const config = carregarConfig();
 
   const carregarDados = useCallback(async () => {
     setCarregando(true);
@@ -35,10 +35,15 @@ export default function LeituraLotePage() {
         return;
       }
 
-      const [loteEncontrado, logoCarregada] = await Promise.all([getLote(codigo), carregarLogo()]);
+      const [loteEncontrado, logoCarregada, configRes] = await Promise.all([
+        getLote(codigo),
+        carregarLogo(),
+        carregarConfigNuvem(),
+      ]);
 
       setLote(loteEncontrado);
       setLogo(logoCarregada || '/logo.png');
+      setNomeConsultorio(configRes.config.nomeConsultorio);
     } catch (err) {
       console.error(err);
       setErro('Erro de conexão ao carregar o lote.');
@@ -146,7 +151,7 @@ export default function LeituraLotePage() {
           )}
 
           <div className="overflow-x-auto w-full flex justify-center rounded-2xl border border-[#E5DFDE] bg-white">
-            <CartaoLote lote={lote} logo={logo} nomeConsultorio={config.nomeConsultorio} />
+            <CartaoLote lote={lote} logo={logo} nomeConsultorio={nomeConsultorio} />
           </div>
 
           <div className="bg-[#FCFBFB] rounded-2xl p-6 border border-[#E5DFDE] w-full space-y-3">
@@ -184,7 +189,7 @@ export default function LeituraLotePage() {
           </div>
 
           <div className="text-center text-xs text-[#7A8283]">
-            {config.nomeConsultorio} · Rastreabilidade Garantida
+            {nomeConsultorio} · Rastreabilidade Garantida
           </div>
         </div>
       )}
