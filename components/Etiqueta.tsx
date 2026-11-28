@@ -153,17 +153,6 @@ export default function Etiqueta({ lote, larguraMm = 60, alturaMm = 25 }: Etique
       }}
     >
       <div
-        className="flex-shrink-0 flex items-center justify-center"
-        style={{ width: `${qrSizeMm}mm`, height: `${qrSizeMm}mm` }}
-      >
-        {qrSrc ? (
-          <img src={qrSrc} alt="QR Code" className="w-full h-full object-contain block" />
-        ) : (
-          <div className="w-full h-full bg-slate-200 animate-pulse" />
-        )}
-      </div>
-
-      <div
         className="flex-1 min-w-0 flex flex-col justify-center h-full overflow-hidden text-black"
         style={{ fontSize: `${fontSizePt}pt`, lineHeight: 1.2 }}
       >
@@ -193,6 +182,17 @@ export default function Etiqueta({ lote, larguraMm = 60, alturaMm = 25 }: Etique
           <div className="whitespace-nowrap overflow-hidden">
             RESP: {nomeResponsavel}
           </div>
+        )}
+      </div>
+
+      <div
+        className="flex-shrink-0 flex items-center justify-center"
+        style={{ width: `${qrSizeMm}mm`, height: `${qrSizeMm}mm` }}
+      >
+        {qrSrc ? (
+          <img src={qrSrc} alt="QR Code" className="w-full h-full object-contain block" />
+        ) : (
+          <div className="w-full h-full bg-slate-200 animate-pulse" />
         )}
       </div>
     </div>
