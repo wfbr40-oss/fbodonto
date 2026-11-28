@@ -20,9 +20,12 @@ body {
 }
 
 @media print {
+  html,
   body {
-    background: white !important;
+    background: #ffffff !important;
     color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -34,9 +37,10 @@ body {
   .etiqueta-item {
     break-inside: avoid;
     page-break-inside: avoid;
+    border-color: #000 !important;
   }
 
   @page {
-    margin: 0;
+    margin: 2mm;
   }
 }

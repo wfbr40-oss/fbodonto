@@ -62,7 +62,7 @@ const ORDEM_ABAS: Record<AbaPrincipal, number> = {
 const subTabSlideVariants = {
   enter: (dir: number) => ({
     opacity: 0,
-    x: dir > 0 ? 48 : -48,
+    x: dir > 0 ? 56 : -56,
   }),
   center: {
     opacity: 1,
@@ -70,22 +70,22 @@ const subTabSlideVariants = {
   },
   exit: (dir: number) => ({
     opacity: 0,
-    x: dir > 0 ? -48 : 48,
+    x: dir > 0 ? -56 : 56,
   }),
 };
 
 const mainTabSlideVariants = {
   enter: (dir: number) => ({
     opacity: 0,
-    y: dir > 0 ? 18 : -18,
+    x: dir > 0 ? 64 : -64,
   }),
   center: {
     opacity: 1,
-    y: 0,
+    x: 0,
   },
   exit: (dir: number) => ({
     opacity: 0,
-    y: dir > 0 ? -14 : 14,
+    x: dir > 0 ? -64 : 64,
   }),
 };
 
@@ -821,7 +821,7 @@ export default function CadastroPage() {
               <button
                 type="button"
                 onClick={() => selecionarAba('novo')}
-                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-colors cursor-pointer whitespace-nowrap ${
+                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'novo'
                     ? 'text-[#3E4546]'
                     : 'text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
@@ -845,7 +845,7 @@ export default function CadastroPage() {
               <button
                 type="button"
                 onClick={() => selecionarAba('qrcode')}
-                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-colors cursor-pointer whitespace-nowrap ${
+                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'qrcode'
                     ? 'text-[#3E4546]'
                     : 'text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
@@ -869,7 +869,7 @@ export default function CadastroPage() {
               <button
                 type="button"
                 onClick={() => selecionarAba('config')}
-                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-colors cursor-pointer whitespace-nowrap ${
+                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'config'
                     ? 'text-[#3E4546]'
                     : 'text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
