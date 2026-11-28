@@ -30,6 +30,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import Etiqueta from '@/components/Etiqueta';
 import LeitorQrCode from '@/components/LeitorQrCode';
 import ModalCartaoLote from '@/components/ModalCartaoLote';
+import PWAInstallButton from '@/components/PWAInstallButton';
 import { useToast } from '@/components/ToastProvider';
 import {
   Menu,
@@ -560,7 +561,7 @@ export default function CadastroPage() {
         )}
 
         <aside
-          className={`no-print fixed lg:sticky top-0 lg:top-16 left-0 z-50 lg:z-20 h-screen lg:h-[calc(100vh-4rem)] w-64 bg-[#FCFBFB] border-r border-[#E5DFDE] flex flex-col justify-between transition-transform duration-200 shrink-0 ${
+          className={`no-print fixed lg:sticky top-0 lg:top-16 left-0 z-50 lg:z-20 h-screen lg:h-[calc(100vh-4rem)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:pt-0 lg:pb-0 w-64 bg-[#FCFBFB] border-r border-[#E5DFDE] flex flex-col justify-between transition-transform duration-200 shrink-0 ${
             sidebarMobile ? 'translate-x-0' : '-translate-x-full'
           } ${sidebarDesktop ? 'lg:translate-x-0 lg:flex' : 'lg:-translate-x-full lg:hidden'}`}
         >
@@ -643,6 +644,8 @@ export default function CadastroPage() {
                 </p>
               </div>
             </div>
+
+            <PWAInstallButton />
 
             <button
               type="button"

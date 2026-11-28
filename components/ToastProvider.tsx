@@ -119,7 +119,7 @@ export default function ToastProvider({ children }: { children: React.ReactNode 
       {children}
       <div
         aria-live="polite"
-        className="fixed top-4 right-4 left-4 sm:left-auto sm:w-[400px] z-[60] flex flex-col gap-2.5 pointer-events-none no-print"
+        className="fixed top-[calc(1rem+env(safe-area-inset-top))] right-4 left-4 sm:left-auto sm:w-[400px] z-[60] flex flex-col gap-2.5 pointer-events-none no-print"
       >
         <AnimatePresence initial={false}>
           {toasts.map((t) => {
