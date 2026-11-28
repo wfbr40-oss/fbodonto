@@ -58,8 +58,8 @@ create policy "Permitir atualizacao de usuarios"
 create table if not exists public.configuracoes (
   id text primary key default 'default',
   nome_consultorio text not null default 'FB Odonto',
-  largura_mm integer not null default 50 check (largura_mm between 20 and 150),
-  altura_mm integer not null default 30 check (altura_mm between 15 and 100),
+  largura_mm integer not null default 60 check (largura_mm between 20 and 150),
+  altura_mm integer not null default 25 check (altura_mm between 15 and 100),
   modo text not null default 'avulsa' check (modo in ('avulsa', 'a4')),
   dias_validade integer not null default 30 check (dias_validade between 1 and 365),
   regra_numeracao text not null default 'turno_manha_tarde' check (regra_numeracao in ('turno_manha_tarde', 'sequencial')),
@@ -103,3 +103,35 @@ drop policy if exists "Permitir upload de config" on storage.objects;
 create policy "Permitir upload de config"
   on storage.objects for insert
   with check (bucket_id = 'config');
+
+-- Tabela de sessões persistentes (login contínuo entre acessos)
+create table if not exists public.sessoes (
+  token_hash text primary key,
+  usuario text not null,
+  nome text not null,
+  role text not null default 'operador' check (role in ('admin', 'operador')),
+  expira_em timestamptz not null,
+  criado_em timestamptz not null default now()
+);
+
+alter table public.sessoes enable row level security;
+
+drop policy if exists "Permitir leitura de sessoes" on public.sessoes;
+create policy "Permitir leitura de sessoes"
+  on public.sessoes for select
+  using (true);
+
+drop policy if exists "Permitir insercao de sessoes" on public.sessoes;
+create policy "Permitir insercao de sessoes"
+  on public.sessoes for insert
+  with check (true);
+
+drop policy if exists "Permitir atualizacao de sessoes" on public.sessoes;
+create policy "Permitir atualizacao de sessoes"
+  on public.sessoes for update
+  using (true);
+
+drop policy if exists "Permitir exclusao de sessoes" on public.sessoes;
+create policy "Permitir exclusao de sessoes"
+  on public.sessoes for delete
+  using (true);

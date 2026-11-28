@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { Lote } from '@/lib/lote';
 import CartaoLote from '@/components/CartaoLote';
 
@@ -16,46 +16,54 @@ export default function CartaoPreviewResponsivo({
   exportId,
 }: CartaoPreviewResponsivoProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const [escala, setEscala] = useState(1);
-  const [alturaCard, setAlturaCard] = useState(340);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const atualizar = () => {
-      if (!containerRef.current) return;
-      const larguraDisponivel = containerRef.current.clientWidth;
-      if (larguraDisponivel > 0) {
-        setEscala(Math.min(1, larguraDisponivel / 600));
-      }
-      if (cardRef.current) {
-        setAlturaCard(cardRef.current.offsetHeight);
-      }
+      const container = containerRef.current;
+      const frame = frameRef.current;
+      const card = cardRef.current;
+      if (!container || !frame || !card) return;
+
+      const larguraDisponivel = container.clientWidth;
+      const escala = larguraDisponivel > 0 ? Math.min(1, larguraDisponivel / 600) : 1;
+      const alturaCard = card.offsetHeight;
+
+      frame.style.width = `${Math.round(600 * escala)}px`;
+      frame.style.height = `${Math.round(alturaCard * escala)}px`;
+      card.style.transform = `scale(${escala})`;
+      container.style.opacity = '1';
     };
 
-    const rafId = requestAnimationFrame(atualizar);
+    atualizar();
     const ro = new ResizeObserver(atualizar);
     if (containerRef.current) ro.observe(containerRef.current);
     if (cardRef.current) ro.observe(cardRef.current);
 
     return () => {
-      cancelAnimationFrame(rafId);
       ro.disconnect();
     };
   }, [lote.codigo, lote.item]);
 
   return (
-    <div ref={containerRef} className="w-full flex justify-center overflow-hidden">
+    <div
+      ref={containerRef}
+      style={{ opacity: 0 }}
+      className="w-full flex justify-center overflow-hidden"
+    >
       <div
+        ref={frameRef}
         style={{
-          width: `${Math.round(600 * escala)}px`,
-          height: `${Math.round(alturaCard * escala)}px`,
+          width: '600px',
+          height: '340px',
         }}
         className="relative shrink-0"
       >
         <div
           ref={cardRef}
           style={{
-            transform: `scale(${escala})`,
+            transform: 'scale(1)',
             transformOrigin: 'top left',
           }}
           className="w-[600px]"

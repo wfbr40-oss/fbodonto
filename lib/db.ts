@@ -100,7 +100,30 @@ export async function carregarConfigNuvem(): Promise<{
 
     if (!error) {
       if (data) {
-        const mapped = mapConfigRow(data as ConfigRow);
+        let mapped = mapConfigRow(data as ConfigRow);
+        if (typeof window !== 'undefined') {
+          const cloudMigratedKey = 'fb_odonto_cloud_migrated_60x25';
+          try {
+            if (!localStorage.getItem(cloudMigratedKey)) {
+              localStorage.setItem(cloudMigratedKey, '1');
+              if (mapped.larguraMm === 50 && mapped.alturaMm === 30) {
+                mapped = {
+                  ...mapped,
+                  larguraMm: CONFIG_PADRAO.larguraMm,
+                  alturaMm: CONFIG_PADRAO.alturaMm,
+                };
+                void supabase
+                  .from('configuracoes')
+                  .update({
+                    largura_mm: CONFIG_PADRAO.larguraMm,
+                    altura_mm: CONFIG_PADRAO.alturaMm,
+                    atualizado_em: new Date().toISOString(),
+                  })
+                  .eq('id', 'default');
+              }
+            }
+          } catch {}
+        }
         salvarConfig(mapped);
         return { config: mapped, storageMode: 'supabase' };
       }
@@ -130,8 +153,8 @@ export async function salvarConfigNuvem(c: Config): Promise<{
     const payload = {
       id: 'default',
       nome_consultorio: c.nomeConsultorio.trim() || CONFIG_PADRAO.nomeConsultorio,
-      largura_mm: Math.min(150, Math.max(20, Number(c.larguraMm) || 50)),
-      altura_mm: Math.min(100, Math.max(15, Number(c.alturaMm) || 30)),
+      largura_mm: Math.min(150, Math.max(20, Number(c.larguraMm) || 60)),
+      altura_mm: Math.min(100, Math.max(15, Number(c.alturaMm) || 25)),
       modo: c.modo === 'a4' ? 'a4' : 'avulsa',
       dias_validade: Math.min(365, Math.max(1, Number(c.diasValidade) || 30)),
       regra_numeracao: (c.regraNumeracao === 'sequencial' ? 'sequencial' : 'turno_manha_tarde') as RegraNumeracao,
@@ -428,27 +451,48 @@ export async function logout(): Promise<void> {
 export async function obterSessaoUsuario(): Promise<{
   autenticado: boolean;
   usuario: string | null;
+  usuarioLogin: string | null;
   adminConfigured: boolean;
   storageMode: 'supabase' | 'local';
 }> {
   try {
     const res = await fetch('/api/auth/session', {
       method: 'GET',
+      cache: 'no-store',
       headers: authHeaders(false),
       credentials: 'include',
     });
     if (!res.ok) {
-      return { autenticado: false, usuario: null, adminConfigured: true, storageMode: 'local' };
+      return {
+        autenticado: false,
+        usuario: null,
+        usuarioLogin: null,
+        adminConfigured: true,
+        storageMode: 'local',
+      };
     }
     const payload = await res.json();
+    const autenticado = Boolean(payload.autenticado);
+    if (autenticado && typeof payload.token === 'string' && payload.token) {
+      memoryAuthToken = payload.token;
+    } else if (!autenticado) {
+      memoryAuthToken = null;
+    }
     return {
-      autenticado: Boolean(payload.autenticado),
+      autenticado,
       usuario: payload.usuario || null,
+      usuarioLogin: payload.usuarioLogin || null,
       adminConfigured: Boolean(payload.adminConfigured),
       storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
     };
   } catch {
-    return { autenticado: false, usuario: null, adminConfigured: true, storageMode: 'local' };
+    return {
+      autenticado: false,
+      usuario: null,
+      usuarioLogin: null,
+      adminConfigured: true,
+      storageMode: 'local',
+    };
   }
 }
 

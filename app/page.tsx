@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, type Variants } from 'motion/react';
 import {
   Lote,
   TurnoLote,
@@ -59,10 +59,12 @@ const ORDEM_ABAS: Record<AbaPrincipal, number> = {
   config: 2,
 };
 
-const subTabSlideVariants = {
+const ABAS_EM_ORDEM: AbaPrincipal[] = ['novo', 'qrcode', 'config'];
+
+const subTabSlideVariants: Variants = {
   enter: (dir: number) => ({
     opacity: 0,
-    x: dir > 0 ? 56 : -56,
+    x: dir > 0 ? 52 : -52,
   }),
   center: {
     opacity: 1,
@@ -70,22 +72,22 @@ const subTabSlideVariants = {
   },
   exit: (dir: number) => ({
     opacity: 0,
-    x: dir > 0 ? -56 : 56,
+    x: dir > 0 ? -52 : 52,
   }),
 };
 
-const mainTabSlideVariants = {
+const mainTabSlideVariants: Variants = {
   enter: (dir: number) => ({
     opacity: 0,
-    x: dir > 0 ? 64 : -64,
+    y: dir > 0 ? 48 : -48,
   }),
   center: {
     opacity: 1,
-    x: 0,
+    y: 0,
   },
   exit: (dir: number) => ({
     opacity: 0,
-    x: dir > 0 ? -64 : 64,
+    y: dir > 0 ? -48 : 48,
   }),
 };
 
@@ -95,7 +97,14 @@ export default function CadastroPage() {
   const [usuarioConectado, setUsuarioConectado] = useState<string>('');
   const [carregandoAuth, setCarregandoAuth] = useState<boolean>(true);
 
-  const [usuario, setUsuario] = useState('');
+  const [usuario, setUsuario] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return localStorage.getItem('fbodonto_ultimo_usuario') || '';
+    } catch {
+      return '';
+    }
+  });
   const [senha, setSenha] = useState('');
   const [setupUsuario, setSetupUsuario] = useState('admin');
   const [setupSenha, setSetupSenha] = useState('');
@@ -107,8 +116,16 @@ export default function CadastroPage() {
   const [configPronta, setConfigPronta] = useState<boolean>(false);
   const [configStorageMode, setConfigStorageMode] = useState<'supabase' | 'local'>('local');
   const [salvandoConfig, setSalvandoConfig] = useState<boolean>(false);
-  const [abaAtiva, setAbaAtiva] = useState<AbaPrincipal>('novo');
+  const [abaAtiva, setAbaAtiva] = useState<AbaPrincipal>(() => {
+    if (typeof window === 'undefined') return 'novo';
+    try {
+      const salva = localStorage.getItem('fbodonto_aba_ativa');
+      if (salva === 'novo' || salva === 'qrcode' || salva === 'config') return salva;
+    } catch {}
+    return 'novo';
+  });
   const [direcaoAba, setDirecaoAba] = useState<1 | -1>(1);
+  const [dragMainY, setDragMainY] = useState<number>(0);
   const [subAbaLote, setSubAbaLote] = useState<SubAbaLote>('cadastro');
   const [direcaoSubLote, setDirecaoSubLote] = useState<1 | -1>(1);
   const [dragSubLoteX, setDragSubLoteX] = useState<number>(0);
@@ -122,8 +139,12 @@ export default function CadastroPage() {
   const [item, setItem] = useState('');
   const [esterilizacao, setEsterilizacao] = useState(hojeISO());
   const [diasValidade, setDiasValidade] = useState<number>(config.diasValidade);
+  const [diasValidadeInput, setDiasValidadeInput] = useState<string>(() =>
+    String(config.diasValidade)
+  );
   const [responsavel, setResponsavel] = useState('');
   const [quantidade, setQuantidade] = useState<number>(1);
+  const [quantidadeInput, setQuantidadeInput] = useState<string>('1');
   const [turnoSelecionado] = useState<TurnoLote>('auto');
 
   const validade = addDias(esterilizacao, diasValidade);
@@ -153,10 +174,13 @@ export default function CadastroPage() {
   const touchSwipeRef = useRef<{
     x: number;
     y: number;
+    scrollY: number;
     time: number;
     ignorar: boolean;
     bloqueadoDirecao?: 'h' | 'v';
   } | null>(null);
+  const fecharMenuAposTransicaoRef = useRef<boolean>(false);
+  const pendingMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pref = prefixoDia(esterilizacao);
   const lotesDoDia = historico.filter((l) => l.codigo.startsWith(pref));
@@ -182,26 +206,102 @@ export default function CadastroPage() {
     setUserStorageMode(storageMode);
   }, []);
 
-  useEffect(() => {
-    carregarConfigNuvem().then(({ config: cfg, storageMode }) => {
-      setConfig(cfg);
-      setDiasValidadeConfigInput(String(cfg.diasValidade));
-      setDiasValidade(cfg.diasValidade);
-      setConfigStorageMode(storageMode);
-      setConfigPronta(true);
-    });
-    obterSessaoUsuario().then(({ autenticado: ok, usuario: nome, adminConfigured: configured, storageMode }) => {
+  const sincronizarSessao = useCallback(
+    async (silencioso = false) => {
+      const {
+        autenticado: ok,
+        usuario: nome,
+        usuarioLogin,
+        adminConfigured: configured,
+        storageMode,
+      } = await obterSessaoUsuario();
       setAutenticado(ok);
       setAdminConfigured(configured);
       setUserStorageMode(storageMode);
       setUsuarioConectado(nome || '');
-      setCarregandoAuth(false);
+      if (ok && usuarioLogin) {
+        try {
+          localStorage.setItem('fbodonto_ultimo_usuario', usuarioLogin);
+        } catch {}
+      }
+      if (!silencioso) {
+        setCarregandoAuth(false);
+      }
       if (ok) {
         carregarDadosHistorico();
         carregarUsuarios();
       }
+    },
+    [carregarDadosHistorico, carregarUsuarios]
+  );
+
+  useEffect(() => {
+    let ativo = true;
+    carregarConfigNuvem().then(({ config: cfg, storageMode }) => {
+      if (!ativo) return;
+      setConfig(cfg);
+      setDiasValidadeConfigInput(String(cfg.diasValidade));
+      setDiasValidade(cfg.diasValidade);
+      setDiasValidadeInput(String(cfg.diasValidade));
+      setConfigStorageMode(storageMode);
+      setConfigPronta(true);
     });
-  }, [carregarDadosHistorico, carregarUsuarios]);
+
+    const tempoMinimoSplash = new Promise<void>((resolve) => {
+      setTimeout(resolve, 650);
+    });
+
+    Promise.all([obterSessaoUsuario(), tempoMinimoSplash])
+      .then(([sessao]) => {
+        if (!ativo) return;
+        setAutenticado(sessao.autenticado);
+        setAdminConfigured(sessao.adminConfigured);
+        setUserStorageMode(sessao.storageMode);
+        setUsuarioConectado(sessao.usuario || '');
+        if (sessao.autenticado && sessao.usuarioLogin) {
+          try {
+            localStorage.setItem('fbodonto_ultimo_usuario', sessao.usuarioLogin);
+          } catch {}
+        }
+        if (sessao.autenticado) {
+          void listarRecentes().then((rec) => {
+            if (ativo) setHistorico(rec);
+          });
+          void listarUsuarios().then(({ usuarios, storageMode }) => {
+            if (ativo) {
+              setUsuariosLista(usuarios);
+              setUserStorageMode(storageMode);
+            }
+          });
+        }
+      })
+      .finally(() => {
+        if (ativo) {
+          setCarregandoAuth(false);
+        }
+      });
+
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const aoRetornarAoApp = () => {
+      if (document.visibilityState === 'visible') {
+        void sincronizarSessao(true);
+      }
+    };
+    const aoReexibirPagina = () => {
+      void sincronizarSessao(true);
+    };
+    document.addEventListener('visibilitychange', aoRetornarAoApp);
+    window.addEventListener('pageshow', aoReexibirPagina);
+    return () => {
+      document.removeEventListener('visibilitychange', aoRetornarAoApp);
+      window.removeEventListener('pageshow', aoReexibirPagina);
+    };
+  }, [sincronizarSessao]);
 
   useEffect(() => {
     if (carregandoAuth) return;
@@ -303,9 +403,13 @@ export default function CadastroPage() {
     e.preventDefault();
     try {
       const nome = await configurarAdminInicial(setupUsuario, setupSenha);
+      try {
+        localStorage.setItem('fbodonto_ultimo_usuario', setupUsuario.trim().toLowerCase());
+      } catch {}
       setAdminConfigured(true);
       setAutenticado(true);
       setUsuarioConectado(nome);
+      setSetupSenha('');
       carregarDadosHistorico();
       carregarUsuarios();
     } catch (err) {
@@ -318,8 +422,12 @@ export default function CadastroPage() {
     e.preventDefault();
     try {
       const nome = await login(usuario, senha);
+      try {
+        localStorage.setItem('fbodonto_ultimo_usuario', usuario.trim().toLowerCase());
+      } catch {}
       setAutenticado(true);
       setUsuarioConectado(nome);
+      setSenha('');
       carregarDadosHistorico();
       carregarUsuarios();
     } catch (err) {
@@ -328,10 +436,24 @@ export default function CadastroPage() {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (pendingMenuTimerRef.current) {
+        clearTimeout(pendingMenuTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleLogout = async () => {
+    if (pendingMenuTimerRef.current) {
+      clearTimeout(pendingMenuTimerRef.current);
+      pendingMenuTimerRef.current = null;
+    }
+    fecharMenuAposTransicaoRef.current = false;
     await logout();
     setAutenticado(false);
     setUsuarioConectado('');
+    setSenha('');
     setSidebarMobile(false);
   };
 
@@ -343,17 +465,49 @@ export default function CadastroPage() {
     }
   };
 
-  const selecionarAba = (aba: AbaPrincipal) => {
-    if (aba !== abaAtiva) {
+  const finalizarTransicaoAba = useCallback(() => {
+    if (!fecharMenuAposTransicaoRef.current) return;
+    fecharMenuAposTransicaoRef.current = false;
+    if (pendingMenuTimerRef.current) {
+      clearTimeout(pendingMenuTimerRef.current);
+      pendingMenuTimerRef.current = null;
+    }
+    setSidebarMobile(false);
+  }, []);
+
+  const selecionarAba = (
+    aba: AbaPrincipal,
+    opcoes?: { fecharDepoisDaTransicao?: boolean }
+  ) => {
+    if (pendingMenuTimerRef.current) {
+      clearTimeout(pendingMenuTimerRef.current);
+      pendingMenuTimerRef.current = null;
+    }
+
+    const mudouAba = aba !== abaAtiva;
+    if (mudouAba) {
       setDirecaoAba(ORDEM_ABAS[aba] >= ORDEM_ABAS[abaAtiva] ? 1 : -1);
     }
     setAbaAtiva(aba);
+    try {
+      localStorage.setItem('fbodonto_aba_ativa', aba);
+    } catch {}
     if (aba !== 'novo') {
       setLoteCriado(null);
     }
+    setDragMainY(0);
     setDragSubLoteX(0);
     setDragSubConfigX(0);
-    setSidebarMobile(false);
+
+    if (opcoes?.fecharDepoisDaTransicao && sidebarMobile && mudouAba) {
+      fecharMenuAposTransicaoRef.current = true;
+      pendingMenuTimerRef.current = setTimeout(() => {
+        finalizarTransicaoAba();
+      }, 340);
+    } else {
+      fecharMenuAposTransicaoRef.current = false;
+      setSidebarMobile(false);
+    }
   };
 
   const mudarSubAbaLote = (novaSub: SubAbaLote) => {
@@ -372,6 +526,36 @@ export default function CadastroPage() {
     setSubAbaConfig(novaSub);
   };
 
+  const podeRolarVerticalmente = (
+    alvo: HTMLElement | null,
+    deltaY: number,
+    limite: HTMLElement
+  ): boolean => {
+    let atual: HTMLElement | null = alvo;
+    while (atual && atual !== limite) {
+      if (atual.scrollHeight > atual.clientHeight + 4) {
+        const overflowY = window.getComputedStyle(atual).overflowY;
+        if (atual.tagName === 'TEXTAREA' || overflowY === 'auto' || overflowY === 'scroll') {
+          if (deltaY < 0 && atual.scrollTop + atual.clientHeight < atual.scrollHeight - 2) {
+            return true;
+          }
+          if (deltaY > 0 && atual.scrollTop > 2) {
+            return true;
+          }
+        }
+      }
+      atual = atual.parentElement;
+    }
+    return false;
+  };
+
+  const desfocarCampoAtivo = () => {
+    const ativo = document.activeElement as HTMLElement | null;
+    if (ativo && typeof ativo.blur === 'function') {
+      ativo.blur();
+    }
+  };
+
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length !== 1 || loteModal) {
       touchSwipeRef.current = null;
@@ -382,18 +566,15 @@ export default function CadastroPage() {
     let ignorar = false;
 
     if (alvo) {
-      const tag = alvo.tagName;
-      if (
-        tag === 'INPUT' ||
-        tag === 'TEXTAREA' ||
-        tag === 'SELECT' ||
-        Boolean(alvo.closest('[role="dialog"], [aria-modal="true"], [data-no-swipe]'))
-      ) {
+      if (alvo.closest('[role="dialog"], [aria-modal="true"], [data-no-swipe]')) {
         ignorar = true;
       } else {
         let atual: HTMLElement | null = alvo;
         while (atual && atual !== e.currentTarget) {
-          if (atual.scrollWidth > atual.clientWidth + 4) {
+          if (
+            atual.tagName !== 'INPUT' &&
+            atual.scrollWidth > atual.clientWidth + 4
+          ) {
             const overflowX = window.getComputedStyle(atual).overflowX;
             if (overflowX === 'auto' || overflowX === 'scroll') {
               ignorar = true;
@@ -409,6 +590,7 @@ export default function CadastroPage() {
     touchSwipeRef.current = {
       x: toque.clientX,
       y: toque.clientY,
+      scrollY: window.scrollY,
       time: Date.now(),
       ignorar,
     };
@@ -428,29 +610,58 @@ export default function CadastroPage() {
       inicio.bloqueadoDirecao = Math.abs(deltaX) > Math.abs(deltaY) * 1.15 ? 'h' : 'v';
     }
 
-    if (inicio.bloqueadoDirecao !== 'h') {
+    if (inicio.bloqueadoDirecao === 'h') {
+      if (dragMainY !== 0) setDragMainY(0);
+
+      if (abaAtiva === 'novo') {
+        if (subAbaLote === 'cadastro') {
+          if (deltaX < 0) {
+            setDragSubLoteX(Math.max(-96, deltaX * 0.45));
+          } else {
+            setDragSubLoteX(Math.min(36, deltaX * 0.18));
+          }
+        } else if (subAbaLote === 'historico' && deltaX > 0) {
+          setDragSubLoteX(Math.min(96, deltaX * 0.45));
+        }
+      } else if (abaAtiva === 'config') {
+        if (subAbaConfig === 'geral') {
+          if (deltaX < 0) {
+            setDragSubConfigX(Math.max(-96, deltaX * 0.45));
+          } else {
+            setDragSubConfigX(Math.min(36, deltaX * 0.18));
+          }
+        } else if (subAbaConfig === 'usuarios' && deltaX > 0) {
+          setDragSubConfigX(Math.min(96, deltaX * 0.45));
+        }
+      }
       return;
     }
 
-    if (abaAtiva === 'novo') {
-      if (subAbaLote === 'cadastro') {
-        if (deltaX < 0) {
-          setDragSubLoteX(Math.max(-96, deltaX * 0.45));
-        } else {
-          setDragSubLoteX(Math.min(36, deltaX * 0.18));
-        }
-      } else if (subAbaLote === 'historico' && deltaX > 0) {
-        setDragSubLoteX(Math.min(96, deltaX * 0.45));
+    if (inicio.bloqueadoDirecao === 'v') {
+      if (dragSubLoteX !== 0) setDragSubLoteX(0);
+      if (dragSubConfigX !== 0) setDragSubConfigX(0);
+
+      if (Math.abs(window.scrollY - inicio.scrollY) >= 2) {
+        if (dragMainY !== 0) setDragMainY(0);
+        return;
       }
-    } else if (abaAtiva === 'config') {
-      if (subAbaConfig === 'geral') {
-        if (deltaX < 0) {
-          setDragSubConfigX(Math.max(-96, deltaX * 0.45));
-        } else {
-          setDragSubConfigX(Math.min(36, deltaX * 0.18));
-        }
-      } else if (subAbaConfig === 'usuarios' && deltaX > 0) {
-        setDragSubConfigX(Math.min(96, deltaX * 0.45));
+
+      if (podeRolarVerticalmente(e.target as HTMLElement | null, deltaY, e.currentTarget)) {
+        if (dragMainY !== 0) setDragMainY(0);
+        return;
+      }
+
+      const indiceAtual = ORDEM_ABAS[abaAtiva];
+      const noTopo = window.scrollY <= 8;
+      const noFim =
+        window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 16;
+
+      if (deltaY < 0 && noFim && indiceAtual < ABAS_EM_ORDEM.length - 1) {
+        setDragMainY(Math.max(-72, deltaY * 0.35));
+      } else if (deltaY > 0 && noTopo && indiceAtual > 0) {
+        setDragMainY(Math.min(72, deltaY * 0.35));
+      } else if (dragMainY !== 0) {
+        setDragMainY(0);
       }
     }
   };
@@ -466,6 +677,7 @@ export default function CadastroPage() {
   const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
     const inicio = touchSwipeRef.current;
     touchSwipeRef.current = null;
+    setDragMainY(0);
     setDragSubLoteX(0);
     setDragSubConfigX(0);
 
@@ -478,52 +690,92 @@ export default function CadastroPage() {
     const deltaY = toque.clientY - inicio.y;
     const duracao = Date.now() - inicio.time;
 
-    if (duracao > 650 || Math.abs(deltaX) < 56 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.35) {
+    if (duracao > 650) {
       return;
     }
 
-    if (sidebarMobile) {
-      if (deltaX < 0) {
-        setSidebarMobile(false);
-      }
-      return;
-    }
+    const ehSwipeHorizontal =
+      Math.abs(deltaX) >= 56 && Math.abs(deltaX) > Math.abs(deltaY) * 1.35;
 
-    if (abaAtiva === 'novo') {
-      if (subAbaLote === 'cadastro') {
+    if (ehSwipeHorizontal) {
+      if (sidebarMobile) {
         if (deltaX < 0) {
-          mudarSubAbaLote('historico');
-        } else if (deltaX > 0) {
+          setSidebarMobile(false);
+        }
+        return;
+      }
+
+      if (abaAtiva === 'novo') {
+        if (subAbaLote === 'cadastro') {
+          if (deltaX < 0) {
+            desfocarCampoAtivo();
+            mudarSubAbaLote('historico');
+          } else if (deltaX > 0) {
+            desfocarCampoAtivo();
+            abrirMenuPorDeslize();
+          }
+        } else if (subAbaLote === 'historico' && deltaX > 0) {
+          mudarSubAbaLote('cadastro');
+        }
+        return;
+      }
+
+      if (abaAtiva === 'qrcode') {
+        if (deltaX > 0) {
+          desfocarCampoAtivo();
           abrirMenuPorDeslize();
         }
-      } else if (subAbaLote === 'historico' && deltaX > 0) {
-        mudarSubAbaLote('cadastro');
+        return;
       }
-      return;
-    }
 
-    if (abaAtiva === 'qrcode') {
-      if (deltaX > 0) {
-        abrirMenuPorDeslize();
-      }
-      return;
-    }
-
-    if (abaAtiva === 'config') {
-      if (subAbaConfig === 'geral') {
-        if (deltaX < 0) {
-          mudarSubAbaConfig('usuarios');
-        } else if (deltaX > 0) {
-          abrirMenuPorDeslize();
+      if (abaAtiva === 'config') {
+        if (subAbaConfig === 'geral') {
+          if (deltaX < 0) {
+            desfocarCampoAtivo();
+            mudarSubAbaConfig('usuarios');
+          } else if (deltaX > 0) {
+            desfocarCampoAtivo();
+            abrirMenuPorDeslize();
+          }
+        } else if (subAbaConfig === 'usuarios' && deltaX > 0) {
+          desfocarCampoAtivo();
+          mudarSubAbaConfig('geral');
         }
-      } else if (subAbaConfig === 'usuarios' && deltaX > 0) {
-        mudarSubAbaConfig('geral');
       }
+      return;
+    }
+
+    const ehSwipeVertical =
+      !sidebarMobile &&
+      Math.abs(deltaY) >= 60 &&
+      Math.abs(deltaY) > Math.abs(deltaX) * 1.35 &&
+      Math.abs(window.scrollY - inicio.scrollY) < 6;
+
+    if (!ehSwipeVertical) {
+      return;
+    }
+
+    if (podeRolarVerticalmente(e.target as HTMLElement | null, deltaY, e.currentTarget)) {
+      return;
+    }
+
+    const indiceAtual = ORDEM_ABAS[abaAtiva];
+    const noTopo = window.scrollY <= 8;
+    const noFim =
+      window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 16;
+
+    if (deltaY < 0 && noFim && indiceAtual < ABAS_EM_ORDEM.length - 1) {
+      desfocarCampoAtivo();
+      selecionarAba(ABAS_EM_ORDEM[indiceAtual + 1]);
+    } else if (deltaY > 0 && noTopo && indiceAtual > 0) {
+      desfocarCampoAtivo();
+      selecionarAba(ABAS_EM_ORDEM[indiceAtual - 1]);
     }
   };
 
   const handleTouchCancel = () => {
     touchSwipeRef.current = null;
+    setDragMainY(0);
     setDragSubLoteX(0);
     setDragSubConfigX(0);
   };
@@ -539,6 +791,7 @@ export default function CadastroPage() {
       setConfig(salva);
       setDiasValidadeConfigInput(String(salva.diasValidade));
       setDiasValidade(salva.diasValidade);
+      setDiasValidadeInput(String(salva.diasValidade));
       setConfigStorageMode(storageMode);
       mostrarPopup({
         tipo: storageMode === 'supabase' ? 'sucesso' : 'aviso',
@@ -590,7 +843,18 @@ export default function CadastroPage() {
   const handleCadastrarLote = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (validade < esterilizacao) {
+    const parsedDias = parseInt(diasValidadeInput, 10);
+    const diasValido = isNaN(parsedDias) || parsedDias < 1 ? 1 : Math.min(365, parsedDias);
+    setDiasValidadeInput(String(diasValido));
+    setDiasValidade(diasValido);
+    const validadeCalculada = addDias(esterilizacao, diasValido);
+
+    const parsedQtd = parseInt(quantidadeInput, 10);
+    const qtdValida = isNaN(parsedQtd) || parsedQtd < 1 ? 1 : Math.min(60, parsedQtd);
+    setQuantidadeInput(String(qtdValida));
+    setQuantidade(qtdValida);
+
+    if (validadeCalculada < esterilizacao) {
       mostrarPopup({
         tipo: 'erro',
         mensagem: 'A data de validade não pode ser anterior à data de esterilização.',
@@ -604,7 +868,7 @@ export default function CadastroPage() {
         {
           item: item.trim(),
           esterilizacao,
-          validade,
+          validade: validadeCalculada,
           responsavel: responsavel.trim() || usuarioConectado || 'Equipe',
         },
         {
@@ -636,119 +900,147 @@ export default function CadastroPage() {
       ? 'Ler QR Code'
       : 'Configurações';
 
-  if (carregandoAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F6F4F3] text-[#505859]">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#CDA9A8] border-t-[#505859]" />
-      </div>
-    );
-  }
-
-  if (!autenticado) {
-    return (
-      <main className="min-h-screen bg-[#F6F4F3] flex items-center justify-center p-4 sm:p-6">
-        <div className="max-w-md w-full bg-[#FCFBFB] rounded-2xl border border-[#E5DFDE] shadow-sm p-8">
-          <div className="text-center mb-7 pb-6 border-b border-[#EDE7E6]">
-            <div className="flex justify-center mb-4">
-              <Image
-                src="/logo.png"
-                alt="Logo FB Odonto"
-                width={130}
-                height={130}
-                referrerPolicy="no-referrer"
-                className="w-[130px] h-[130px] object-contain"
-              />
-            </div>
-            <h1 className="text-2xl font-bold text-[#3E4546] tracking-tight">{config.nomeConsultorio}</h1>
-            <p className="text-sm text-[#7A8283] mt-1">Controle e Rastreabilidade de Esterilização</p>
-          </div>
-
-          {!adminConfigured ? (
-            <form onSubmit={handleSetupAdmin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-[#505859] mb-1.5">
-                  Usuário Administrador
-                </label>
-                <input
-                  type="text"
-                  value={setupUsuario}
-                  onChange={(e) => setSetupUsuario(e.target.value)}
-                  required
-                  className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#505859] mb-1.5">
-                  Senha Inicial
-                </label>
-                <input
-                  type="password"
-                  value={setupSenha}
-                  onChange={(e) => setSetupSenha(e.target.value)}
-                  required
-                  minLength={4}
-                  className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
-                  placeholder="Mínimo 4 caracteres (ex: admin)"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
-              >
-                <LogIn className="w-5 h-5 text-[#CDA9A8]" />
-                <span>Ativar Acesso e Entrar</span>
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-[#505859] mb-1.5">Usuário</label>
-                <input
-                  type="text"
-                  value={usuario}
-                  onChange={(e) => setUsuario(e.target.value)}
-                  required
-                  className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
-                  placeholder="Ex: admin"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#505859] mb-1.5">Senha</label>
-                <input
-                  type="password"
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  required
-                  className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
-                  placeholder="••••••••"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
-              >
-                <LogIn className="w-5 h-5 text-[#CDA9A8]" />
-                <span>Entrar no Sistema</span>
-              </button>
-            </form>
-          )}
-        </div>
-      </main>
-    );
-  }
-
   return (
-    <div
-      className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchCancel}
-    >
+    <AnimatePresence mode="wait">
+      {carregandoAuth ? (
+        <motion.div
+          key="splash-abertura"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.96 }}
+          transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+          className="min-h-[100dvh] flex items-center justify-center bg-[#F6F4F3] p-6 overflow-hidden"
+        >
+          <div className="flex items-center justify-center">
+            <Image
+              src="/logo.png"
+              alt="Logo FB Odonto"
+              width={224}
+              height={224}
+              priority
+              referrerPolicy="no-referrer"
+              className="w-[200px] h-[200px] sm:w-[224px] sm:h-[224px] object-contain select-none"
+            />
+          </div>
+        </motion.div>
+      ) : !autenticado ? (
+        <motion.main
+          key="tela-login"
+          initial={{ opacity: 0, y: 12, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -10, scale: 0.985 }}
+          transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+          className="min-h-[100dvh] bg-[#F6F4F3] flex items-center justify-center p-4 sm:p-6"
+        >
+          <div className="max-w-md w-full bg-[#FCFBFB] rounded-2xl border border-[#E5DFDE] shadow-sm p-8">
+            <div className="text-center mb-7 pb-6 border-b border-[#EDE7E6]">
+              <div className="flex justify-center mb-4">
+                <Image
+                  src="/logo.png"
+                  alt="Logo FB Odonto"
+                  width={130}
+                  height={130}
+                  priority
+                  referrerPolicy="no-referrer"
+                  className="w-[130px] h-[130px] object-contain"
+                />
+              </div>
+              <h1 className="text-2xl font-bold text-[#3E4546] tracking-tight">{config.nomeConsultorio}</h1>
+              <p className="text-sm text-[#7A8283] mt-1">Controle e Rastreabilidade de Esterilização</p>
+            </div>
+
+            {!adminConfigured ? (
+              <form onSubmit={handleSetupAdmin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#505859] mb-1.5">
+                    Usuário Administrador
+                  </label>
+                  <input
+                    type="text"
+                    value={setupUsuario}
+                    onChange={(e) => setSetupUsuario(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#505859] mb-1.5">
+                    Senha Inicial
+                  </label>
+                  <input
+                    type="password"
+                    value={setupSenha}
+                    onChange={(e) => setSetupSenha(e.target.value)}
+                    required
+                    minLength={4}
+                    className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
+                    placeholder="Mínimo 4 caracteres (ex: admin)"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <LogIn className="w-5 h-5 text-[#CDA9A8]" />
+                  <span>Ativar Acesso e Entrar</span>
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#505859] mb-1.5">Usuário</label>
+                  <input
+                    type="text"
+                    name="username"
+                    autoComplete="username"
+                    value={usuario}
+                    onChange={(e) => setUsuario(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
+                    placeholder="Ex: admin"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#505859] mb-1.5">Senha</label>
+                  <input
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    value={senha}
+                    onChange={(e) => setSenha(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
+                    placeholder="••••••••"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <LogIn className="w-5 h-5 text-[#CDA9A8]" />
+                  <span>Entrar no Sistema</span>
+                </button>
+              </form>
+            )}
+          </div>
+        </motion.main>
+      ) : (
+        <motion.div
+          key="tela-app"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col overflow-x-clip"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchCancel}
+        >
       <header className="bg-[#FCFBFB] border-b border-[#E5DFDE] sticky top-0 z-30 no-print">
         <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -767,6 +1059,7 @@ export default function CadastroPage() {
                 alt="Logo FB Odonto"
                 width={40}
                 height={40}
+                priority
                 referrerPolicy="no-referrer"
                 className="w-10 h-10 object-contain"
               />
@@ -820,7 +1113,7 @@ export default function CadastroPage() {
             <nav className="p-4 space-y-1.5" aria-label="Navegação principal">
               <button
                 type="button"
-                onClick={() => selecionarAba('novo')}
+                onClick={() => selecionarAba('novo', { fecharDepoisDaTransicao: true })}
                 className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'novo'
                     ? 'text-[#3E4546]'
@@ -844,7 +1137,7 @@ export default function CadastroPage() {
 
               <button
                 type="button"
-                onClick={() => selecionarAba('qrcode')}
+                onClick={() => selecionarAba('qrcode', { fecharDepoisDaTransicao: true })}
                 className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'qrcode'
                     ? 'text-[#3E4546]'
@@ -868,7 +1161,7 @@ export default function CadastroPage() {
 
               <button
                 type="button"
-                onClick={() => selecionarAba('config')}
+                onClick={() => selecionarAba('config', { fecharDepoisDaTransicao: true })}
                 className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'config'
                     ? 'text-[#3E4546]'
@@ -919,16 +1212,30 @@ export default function CadastroPage() {
         </aside>
 
         <main className="flex-1 min-w-0 max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 w-full">
-          <AnimatePresence initial={false}>
-            {abaAtiva === 'novo' && (
-              <motion.div
-                key="aba-novo"
-                initial={{ opacity: 0, x: direcaoAba * 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -direcaoAba * 24 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="space-y-6 touch-pan-y overflow-x-hidden"
-              >
+          <div className="relative overflow-clip print:overflow-visible">
+            <div
+              style={{
+                transform: dragMainY ? `translateY(${dragMainY}px)` : undefined,
+                transition: dragMainY
+                  ? 'none'
+                  : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
+              }}
+            >
+              <AnimatePresence mode="popLayout" initial={false} custom={direcaoAba}>
+                {abaAtiva === 'novo' && (
+                  <motion.div
+                    key="aba-novo"
+                    custom={direcaoAba}
+                    variants={mainTabSlideVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                    onAnimationComplete={(definition) => {
+                      if (definition === 'center') finalizarTransicaoAba();
+                    }}
+                    className="w-full space-y-6 touch-pan-y"
+                  >
                 <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit no-print">
                   <button
                     type="button"
@@ -968,25 +1275,26 @@ export default function CadastroPage() {
                   </button>
                 </div>
 
-                <div
-                  className="relative"
-                  style={{
-                    transform: dragSubLoteX ? `translateX(${dragSubLoteX}px)` : undefined,
-                    transition: dragSubLoteX
-                      ? 'none'
-                      : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
-                  }}
-                >
-                  <AnimatePresence mode="popLayout" initial={false} custom={direcaoSubLote}>
-                    <motion.div
-                      key={subAbaLote}
-                      custom={direcaoSubLote}
-                      variants={subTabSlideVariants}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                    >
+                <div className="relative overflow-x-clip">
+                  <div
+                    style={{
+                      transform: dragSubLoteX ? `translateX(${dragSubLoteX}px)` : undefined,
+                      transition: dragSubLoteX
+                        ? 'none'
+                        : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    }}
+                  >
+                    <AnimatePresence mode="popLayout" initial={false} custom={direcaoSubLote}>
+                      <motion.div
+                        key={subAbaLote}
+                        custom={direcaoSubLote}
+                        variants={subTabSlideVariants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                        className="w-full"
+                      >
                       {subAbaLote === 'cadastro' ? (
                 <div className={loteCriado ? 'grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6' : 'max-w-3xl mx-auto'}>
                   <div
@@ -1040,13 +1348,22 @@ export default function CadastroPage() {
                             Validade (Dias) *
                           </label>
                           <input
-                            type="number"
-                            min="1"
-                            max="365"
-                            value={diasValidade}
+                            type="text"
+                            inputMode="numeric"
+                            value={diasValidadeInput}
                             onChange={(e) => {
-                              const val = parseInt(e.target.value, 10) || 30;
-                              setDiasValidade(val);
+                              const apenasDigitos = e.target.value.replace(/\D/g, '');
+                              setDiasValidadeInput(apenasDigitos);
+                              const parsed = parseInt(apenasDigitos, 10);
+                              if (!isNaN(parsed) && parsed >= 1) {
+                                setDiasValidade(Math.min(365, parsed));
+                              }
+                            }}
+                            onBlur={() => {
+                              const parsed = parseInt(diasValidadeInput, 10);
+                              const valido = isNaN(parsed) || parsed < 1 ? 1 : Math.min(365, parsed);
+                              setDiasValidadeInput(String(valido));
+                              setDiasValidade(valido);
                             }}
                             required
                             className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546] tabular-nums"
@@ -1075,11 +1392,23 @@ export default function CadastroPage() {
                             Quantidade de Etiquetas *
                           </label>
                           <input
-                            type="number"
-                            min="1"
-                            max="60"
-                            value={quantidade}
-                            onChange={(e) => setQuantidade(parseInt(e.target.value, 10) || 1)}
+                            type="text"
+                            inputMode="numeric"
+                            value={quantidadeInput}
+                            onChange={(e) => {
+                              const apenasDigitos = e.target.value.replace(/\D/g, '');
+                              setQuantidadeInput(apenasDigitos);
+                              const parsed = parseInt(apenasDigitos, 10);
+                              if (!isNaN(parsed) && parsed >= 1) {
+                                setQuantidade(Math.min(60, parsed));
+                              }
+                            }}
+                            onBlur={() => {
+                              const parsed = parseInt(quantidadeInput, 10);
+                              const valido = isNaN(parsed) || parsed < 1 ? 1 : Math.min(60, parsed);
+                              setQuantidadeInput(String(valido));
+                              setQuantidade(valido);
+                            }}
                             required
                             className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546] tabular-nums"
                           />
@@ -1209,6 +1538,7 @@ export default function CadastroPage() {
                                 onClick={() => {
                                   setLoteCriado(l);
                                   setQuantidade(1);
+                                  setQuantidadeInput('1');
                                   mudarSubAbaLote('cadastro');
                                   window.scrollTo({ top: 0, behavior: 'smooth' });
                                 }}
@@ -1260,6 +1590,7 @@ export default function CadastroPage() {
                                     onClick={() => {
                                       setLoteCriado(l);
                                       setQuantidade(1);
+                                      setQuantidadeInput('1');
                                       mudarSubAbaLote('cadastro');
                                       window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
@@ -1288,6 +1619,7 @@ export default function CadastroPage() {
               )}
                     </motion.div>
                   </AnimatePresence>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -1295,17 +1627,23 @@ export default function CadastroPage() {
             {abaAtiva === 'qrcode' && (
               <motion.div
                 key="aba-qrcode"
-                initial={{ opacity: 0, x: direcaoAba * 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -direcaoAba * 24 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="no-print touch-pan-y overflow-x-hidden"
+                custom={direcaoAba}
+                variants={mainTabSlideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                onAnimationComplete={(definition) => {
+                  if (definition === 'center') finalizarTransicaoAba();
+                }}
+                className="w-full no-print touch-pan-y"
               >
                 <LeitorQrCode
                   nomeConsultorio={config.nomeConsultorio}
                   onReimprimir={(lote) => {
                     setLoteCriado(lote);
                     setQuantidade(1);
+                    setQuantidadeInput('1');
                     setSubAbaLote('cadastro');
                     selecionarAba('novo');
                   }}
@@ -1316,12 +1654,18 @@ export default function CadastroPage() {
             {abaAtiva === 'config' && (
               <motion.div
                 key="aba-config"
-                initial={{ opacity: 0, x: direcaoAba * 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -direcaoAba * 24 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="max-w-2xl mx-auto space-y-6 no-print touch-pan-y overflow-x-hidden"
+                custom={direcaoAba}
+                variants={mainTabSlideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                onAnimationComplete={(definition) => {
+                  if (definition === 'center') finalizarTransicaoAba();
+                }}
+                className="w-full no-print touch-pan-y"
               >
+                <div className="max-w-2xl mx-auto space-y-6">
                 <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit">
                   <button
                     type="button"
@@ -1362,25 +1706,26 @@ export default function CadastroPage() {
                   </button>
                 </div>
 
-                <div
-                  className="relative"
-                  style={{
-                    transform: dragSubConfigX ? `translateX(${dragSubConfigX}px)` : undefined,
-                    transition: dragSubConfigX
-                      ? 'none'
-                      : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
-                  }}
-                >
-                  <AnimatePresence mode="popLayout" initial={false} custom={direcaoSubConfig}>
-                    <motion.div
-                      key={subAbaConfig}
-                      custom={direcaoSubConfig}
-                      variants={subTabSlideVariants}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                    >
+                <div className="relative overflow-x-clip">
+                  <div
+                    style={{
+                      transform: dragSubConfigX ? `translateX(${dragSubConfigX}px)` : undefined,
+                      transition: dragSubConfigX
+                        ? 'none'
+                        : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    }}
+                  >
+                    <AnimatePresence mode="popLayout" initial={false} custom={direcaoSubConfig}>
+                      <motion.div
+                        key={subAbaConfig}
+                        custom={direcaoSubConfig}
+                        variants={subTabSlideVariants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                        className="w-full"
+                      >
                       {subAbaConfig === 'geral' ? (
                 <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6">
                   <h2 className="text-base sm:text-lg font-bold text-[#3E4546] mb-4 pb-3 border-b border-[#EDE7E6]">
@@ -1620,10 +1965,14 @@ export default function CadastroPage() {
               )}
                     </motion.div>
                   </AnimatePresence>
+                  </div>
+                </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
+            </div>
+          </div>
 
           {loteCriado && (
             <div className="hidden print:block">
@@ -1648,6 +1997,8 @@ export default function CadastroPage() {
           )}
         </main>
       </div>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

@@ -4,12 +4,12 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Lote, buildLink } from '@/lib/lote';
-import { getLote, carregarConfigNuvem } from '@/lib/db';
+import { getLote, carregarConfigNuvem, obterSessaoUsuario } from '@/lib/db';
 import { gerarImagem, copiarTextoEImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
 import CartaoPreviewResponsivo from '@/components/CartaoPreviewResponsivo';
 import { useToast } from '@/components/ToastProvider';
 import { carregarConfig } from '@/lib/config';
-import { Copy, Download, AlertCircle, RefreshCw, Link as LinkIcon } from 'lucide-react';
+import { Copy, Download, AlertCircle, RefreshCw, Link as LinkIcon, ArrowLeft } from 'lucide-react';
 
 export default function LeituraLotePage() {
   const params = useParams();
@@ -22,6 +22,7 @@ export default function LeituraLotePage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [processando, setProcessando] = useState<boolean>(false);
+  const [sessaoAtiva, setSessaoAtiva] = useState<boolean>(false);
   const { mostrarPopup } = useToast();
 
   const carregarDados = useCallback(async () => {
@@ -34,13 +35,15 @@ export default function LeituraLotePage() {
         return;
       }
 
-      const [loteEncontrado, configRes] = await Promise.all([
+      const [loteEncontrado, configRes, sessao] = await Promise.all([
         getLote(codigo),
         carregarConfigNuvem(),
+        obterSessaoUsuario(),
       ]);
 
       setLote(loteEncontrado);
       setNomeConsultorio(configRes.config.nomeConsultorio);
+      setSessaoAtiva(sessao.autenticado);
     } catch (err) {
       console.error(err);
       setErro('Erro de conexão ao carregar o lote.');
@@ -155,6 +158,15 @@ export default function LeituraLotePage() {
                 {nomeConsultorio} · Rastreabilidade Garantida
               </p>
             </div>
+            {sessaoAtiva && (
+              <Link
+                href="/"
+                className="shrink-0 px-3 py-1.5 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-[#9E7372]" />
+                <span>Voltar ao App</span>
+              </Link>
+            )}
           </div>
 
           <div className="border border-[#E5DFDE] rounded-xl bg-[#F8F5F5] py-1.5 px-2.5 sm:py-2 sm:px-4 flex justify-center">

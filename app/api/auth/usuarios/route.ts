@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   createStoredUser,
   getEnvAdminConfig,
-  getSessionFromRequest,
   hashPassword,
   listStoredUsers,
   normalizarUsuario,
   PublicUser,
+  resolveSessionFromRequest,
   verifySameOriginMutation,
 } from '@/lib/server-auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
-  const session = getSessionFromRequest(req);
-  if (!session) {
+  const resolvido = await resolveSessionFromRequest(req);
+  if (!resolvido) {
     return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
   }
 
@@ -42,8 +44,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Origem da requisição não permitida.' }, { status: 403 });
   }
 
-  const session = getSessionFromRequest(req);
-  if (!session) {
+  const resolvido = await resolveSessionFromRequest(req);
+  if (!resolvido) {
     return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
   }
 

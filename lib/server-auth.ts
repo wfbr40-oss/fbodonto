@@ -5,12 +5,18 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const SESSION_COOKIE_NAME = 'fb_odonto_session';
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 dias
+export const SESSION_TTL_MS = SESSION_MAX_AGE_SECONDS * 1000;
 
 const DATA_DIR = path.resolve(process.cwd(), '.data');
 const USERS_FILE = path.resolve(DATA_DIR, 'users.json');
+const SESSIONS_FILE = path.resolve(DATA_DIR, 'sessions.json');
 
 // Segredo de assinatura de sessão: usa AUTH_SECRET do ambiente ou gera chave em memória para o processo
-const globalForAuth = globalThis as typeof globalThis & { __fbOdontoAuthSecret?: Buffer };
+const globalForAuth = globalThis as typeof globalThis & {
+  __fbOdontoAuthSecret?: Buffer;
+  __fbOdontoRevokedHashes?: Set<string>;
+};
 function getSigningKey(): Buffer {
   const envSecret = process.env.AUTH_SECRET?.trim();
   if (envSecret && envSecret.length >= 16) {
@@ -20,6 +26,13 @@ function getSigningKey(): Buffer {
     globalForAuth.__fbOdontoAuthSecret = crypto.randomBytes(32);
   }
   return globalForAuth.__fbOdontoAuthSecret;
+}
+
+function getRevokedHashesSet(): Set<string> {
+  if (!globalForAuth.__fbOdontoRevokedHashes) {
+    globalForAuth.__fbOdontoRevokedHashes = new Set<string>();
+  }
+  return globalForAuth.__fbOdontoRevokedHashes;
 }
 
 function getServerSupabase() {
@@ -288,18 +301,190 @@ export type SessionPayload = {
   exp: number;
 };
 
+type StoredSessionRecord = {
+  tokenHash: string;
+  usuario: string;
+  nome: string;
+  role: 'admin' | 'operador';
+  exp: number;
+};
+
+function hashSessionToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function readLocalSessions(): StoredSessionRecord[] {
+  try {
+    if (!fs.existsSync(SESSIONS_FILE)) return [];
+    const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    return (parsed as StoredSessionRecord[]).filter(
+      (s) => s && typeof s.tokenHash === 'string' && typeof s.exp === 'number' && s.exp > now
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalSessions(sessions: StoredSessionRecord[]): void {
+  try {
+    ensureDataDir();
+    const now = Date.now();
+    const valid = sessions.filter((s) => s.exp > now).slice(-100);
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(valid, null, 2), { mode: 0o600 });
+  } catch {
+    // ignora falha de escrita em ambiente somente leitura
+  }
+}
+
 export function createSessionToken(payload: Omit<SessionPayload, 'exp'>): string {
   const fullPayload: SessionPayload = {
     ...payload,
-    exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 dias
+    exp: Date.now() + SESSION_TTL_MS,
   };
   const body = Buffer.from(JSON.stringify(fullPayload)).toString('base64url');
   const sig = crypto.createHmac('sha256', getSigningKey()).update(body).digest('base64url');
   return `${body}.${sig}`;
 }
 
+export async function saveSessionRecord(
+  token: string,
+  payload: Omit<SessionPayload, 'exp'>
+): Promise<void> {
+  const tokenHash = hashSessionToken(token);
+  const exp = Date.now() + SESSION_TTL_MS;
+  getRevokedHashesSet().delete(tokenHash);
+
+  const localSessions = readLocalSessions().filter((s) => s.tokenHash !== tokenHash);
+  localSessions.push({
+    tokenHash,
+    usuario: payload.usuario,
+    nome: payload.nome,
+    role: payload.role,
+    exp,
+  });
+  writeLocalSessions(localSessions);
+
+  const sb = getServerSupabase();
+  if (sb) {
+    try {
+      const { error } = await sb.from('sessoes').upsert(
+        [
+          {
+            token_hash: tokenHash,
+            usuario: payload.usuario,
+            nome: payload.nome,
+            role: payload.role,
+            expira_em: new Date(exp).toISOString(),
+          },
+        ],
+        { onConflict: 'token_hash' }
+      );
+      if (error && !isMissingTableError(error)) {
+        console.warn('Erro ao salvar sessão no Supabase:', error.message);
+      }
+    } catch {
+      // fallback já salvo localmente
+    }
+  }
+}
+
+export async function touchSessionRecord(token: string): Promise<void> {
+  const tokenHash = hashSessionToken(token);
+  const novoExp = Date.now() + SESSION_TTL_MS;
+
+  const localSessions = readLocalSessions();
+  const idx = localSessions.findIndex((s) => s.tokenHash === tokenHash);
+  if (idx >= 0) {
+    localSessions[idx] = { ...localSessions[idx], exp: novoExp };
+    writeLocalSessions(localSessions);
+  }
+
+  const sb = getServerSupabase();
+  if (sb) {
+    try {
+      const { error } = await sb
+        .from('sessoes')
+        .update({ expira_em: new Date(novoExp).toISOString() })
+        .eq('token_hash', tokenHash);
+      if (error && !isMissingTableError(error)) {
+        console.warn('Erro ao renovar sessão no Supabase:', error.message);
+      }
+    } catch {
+      // ignora erro de rede
+    }
+  }
+}
+
+export async function revokeSessionRecord(token: string | undefined | null): Promise<void> {
+  if (!token) return;
+  const tokenHash = hashSessionToken(token);
+  getRevokedHashesSet().add(tokenHash);
+
+  const localSessions = readLocalSessions().filter((s) => s.tokenHash !== tokenHash);
+  writeLocalSessions(localSessions);
+
+  const sb = getServerSupabase();
+  if (sb) {
+    try {
+      const { error } = await sb.from('sessoes').delete().eq('token_hash', tokenHash);
+      if (error && !isMissingTableError(error)) {
+        console.warn('Erro ao revogar sessão no Supabase:', error.message);
+      }
+    } catch {
+      // ignora erro de rede
+    }
+  }
+}
+
+async function findPersistedSession(token: string): Promise<SessionPayload | null> {
+  const tokenHash = hashSessionToken(token);
+  if (getRevokedHashesSet().has(tokenHash)) return null;
+
+  const sb = getServerSupabase();
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from('sessoes')
+        .select('usuario, nome, role, expira_em')
+        .eq('token_hash', tokenHash)
+        .maybeSingle();
+
+      if (!error && data) {
+        const expMs = new Date(data.expira_em as string).getTime();
+        if (Number.isFinite(expMs) && expMs > Date.now()) {
+          return {
+            usuario: data.usuario as string,
+            nome: data.nome as string,
+            role: data.role === 'admin' ? 'admin' : 'operador',
+            exp: expMs,
+          };
+        }
+        return null;
+      }
+    } catch {
+      // tenta store local abaixo
+    }
+  }
+
+  const localSessions = readLocalSessions();
+  const encontrado = localSessions.find((s) => s.tokenHash === tokenHash);
+  if (!encontrado || encontrado.exp <= Date.now()) return null;
+
+  return {
+    usuario: encontrado.usuario,
+    nome: encontrado.nome,
+    role: encontrado.role,
+    exp: encontrado.exp,
+  };
+}
+
 export function verifySessionToken(token: string | undefined | null): SessionPayload | null {
   if (!token || !token.includes('.')) return null;
+  if (getRevokedHashesSet().has(hashSessionToken(token))) return null;
+
   const [body, sig] = token.split('.');
   if (!body || !sig) return null;
   const expectedSig = crypto.createHmac('sha256', getSigningKey()).update(body).digest('base64url');
@@ -318,15 +503,49 @@ export function verifySessionToken(token: string | undefined | null): SessionPay
   }
 }
 
-export function getSessionFromRequest(req: NextRequest): SessionPayload | null {
+export function extractTokenFromRequest(req: NextRequest): string | null {
   const authHeader = req.headers.get('authorization');
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const bearerToken = authHeader.slice(7).trim();
-    const verified = verifySessionToken(bearerToken);
-    if (verified) return verified;
+    if (bearerToken) return bearerToken;
   }
   const cookieToken = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  return verifySessionToken(cookieToken);
+  return cookieToken || null;
+}
+
+export function getSessionFromRequest(req: NextRequest): SessionPayload | null {
+  const token = extractTokenFromRequest(req);
+  return verifySessionToken(token);
+}
+
+export async function resolveSessionFromRequest(
+  req: NextRequest
+): Promise<{ session: SessionPayload; token: string } | null> {
+  const authHeader = req.headers.get('authorization');
+  const bearerToken =
+    authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+  const cookieToken = req.cookies.get(SESSION_COOKIE_NAME)?.value || null;
+
+  const candidatos = [bearerToken, cookieToken].filter(
+    (t): t is string => Boolean(t)
+  );
+
+  for (const token of candidatos) {
+    const tokenHash = hashSessionToken(token);
+    if (getRevokedHashesSet().has(tokenHash)) continue;
+
+    const stored = await findPersistedSession(token);
+    if (stored) {
+      return { session: stored, token };
+    }
+
+    const signed = verifySessionToken(token);
+    if (signed) {
+      return { session: signed, token };
+    }
+  }
+
+  return null;
 }
 
 export function verifySameOriginMutation(req: NextRequest): boolean {
@@ -347,7 +566,7 @@ export function verifySameOriginMutation(req: NextRequest): boolean {
 export function attachSessionCookie(res: NextResponse, token: string) {
   res.headers.append(
     'Set-Cookie',
-    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=${60 * 60 * 24 * 7}`
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=${SESSION_MAX_AGE_SECONDS}`
   );
 }
 

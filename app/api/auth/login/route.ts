@@ -5,6 +5,7 @@ import {
   findStoredUser,
   getEnvAdminConfig,
   normalizarUsuario,
+  saveSessionRecord,
   timingSafeEqualStr,
   verifyPassword,
   verifySameOriginMutation,
@@ -34,14 +35,17 @@ export async function POST(req: NextRequest) {
     if (!timingSafeEqualStr(senha, envAdmin.password)) {
       return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
     }
-    const token = createSessionToken({
+    const payloadSessao = {
       usuario: envAdmin.username,
       nome: 'Administrador',
-      role: 'admin',
-    });
+      role: 'admin' as const,
+    };
+    const token = createSessionToken(payloadSessao);
+    await saveSessionRecord(token, payloadSessao);
     const res = NextResponse.json({
       autenticado: true,
       usuario: 'Administrador',
+      usuarioLogin: envAdmin.username,
       role: 'admin',
       token,
     });
@@ -56,15 +60,18 @@ export async function POST(req: NextRequest) {
   }
 
   const nomeExibicao = encontrado.nome || encontrado.usuario;
-  const token = createSessionToken({
+  const payloadSessao = {
     usuario: encontrado.usuario,
     nome: nomeExibicao,
     role: encontrado.role,
-  });
+  };
+  const token = createSessionToken(payloadSessao);
+  await saveSessionRecord(token, payloadSessao);
 
   const res = NextResponse.json({
     autenticado: true,
     usuario: nomeExibicao,
+    usuarioLogin: encontrado.usuario,
     role: encontrado.role,
     token,
   });

@@ -3,6 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Lote, buildLink, formatDataBR, statusValidade } from '@/lib/lote';
+import { getLogoEmCache, precarregarLogo } from '@/lib/logoCache';
+
+const qrCodeCache = new Map<string, string>();
 
 type CartaoLoteProps = {
   lote: Lote;
@@ -17,20 +20,53 @@ export default function CartaoLote({
   nomeConsultorio = 'FB Odonto',
   exportId = 'cartao-lote-exportavel',
 }: CartaoLoteProps) {
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const linkLote = buildLink(lote.codigo);
+  const logoUrlPadrao = logo || '/logo.png';
+  const [qrDataUrl, setQrDataUrl] = useState<string>(() => qrCodeCache.get(linkLote) || '');
+  const [logoResolvida, setLogoResolvida] = useState<string>(
+    () => getLogoEmCache(logoUrlPadrao) || logoUrlPadrao
+  );
   const status = statusValidade(lote);
-  const logoSrc = logo || '/logo.png';
+  const logoSrc = getLogoEmCache(logoUrlPadrao) || logoResolvida;
 
   useEffect(() => {
-    const link = buildLink(lote.codigo);
-    QRCode.toDataURL(link, {
+    let ativo = true;
+    if (!getLogoEmCache(logoUrlPadrao)) {
+      precarregarLogo(logoUrlPadrao)
+        .then((url) => {
+          if (ativo) setLogoResolvida(url);
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      ativo = false;
+    };
+  }, [logoUrlPadrao]);
+
+  useEffect(() => {
+    let ativo = true;
+    const emCache = qrCodeCache.get(linkLote);
+    if (emCache) {
+      return;
+    }
+
+    QRCode.toDataURL(linkLote, {
       width: 160,
       margin: 1,
       color: { dark: '#3E4546', light: '#FFFFFF' },
     })
-      .then(setQrDataUrl)
+      .then((url) => {
+        qrCodeCache.set(linkLote, url);
+        if (ativo) setQrDataUrl(url);
+      })
       .catch((err) => console.error('Erro ao gerar QR Code do cartão:', err));
-  }, [lote.codigo]);
+
+    return () => {
+      ativo = false;
+    };
+  }, [linkLote]);
+
+  const qrSrcFinal = qrCodeCache.get(linkLote) || qrDataUrl;
 
   return (
     <div
@@ -40,7 +76,13 @@ export default function CartaoLote({
     >
       <div className="flex items-center justify-between gap-4 border-b border-[#EDE7E6] pb-[13px] mb-[13px]">
         <div className="flex items-center shrink-0">
-          <img src={logoSrc} alt={`Logo ${nomeConsultorio}`} className="h-[84px] max-w-[210px] object-contain" />
+          <img
+            src={logoSrc}
+            alt={`Logo ${nomeConsultorio}`}
+            loading="eager"
+            decoding="sync"
+            className="h-[84px] max-w-[210px] object-contain"
+          />
         </div>
         <div className="flex-1 min-w-0 text-center px-2">
           <div className="text-base font-bold text-[#3E4546] leading-snug break-words">
@@ -106,8 +148,8 @@ export default function CartaoLote({
         </div>
 
         <div className="flex flex-col items-center justify-center bg-[#F8F5F5] p-4 rounded-lg border border-[#E8E1E0] text-center">
-          {qrDataUrl ? (
-            <img src={qrDataUrl} alt="QR Code" className="w-28 h-28 object-contain mb-2" />
+          {qrSrcFinal ? (
+            <img src={qrSrcFinal} alt="QR Code" decoding="sync" className="w-28 h-28 object-contain mb-2" />
           ) : (
             <div className="w-28 h-28 bg-[#EDE7E6] animate-pulse mb-2" />
           )}

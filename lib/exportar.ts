@@ -1,6 +1,27 @@
 import { toPng, toJpeg } from 'html-to-image';
 import { Lote, buildLink, formatDataBR } from './lote';
 
+function escapeHtml(valor: string): string {
+  return valor
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizarUrlHttp(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      return parsed.toString();
+    }
+  } catch {
+    // URL inválida
+  }
+  return '#';
+}
+
 export async function gerarImagem(el: HTMLElement): Promise<Blob> {
   let dataUrl = await toPng(el, { pixelRatio: 2, cacheBust: true });
   let res = await fetch(dataUrl);
@@ -29,7 +50,7 @@ export function textoDoLote(l: Lote): string {
 
 export async function copiarTextoEImagem(l: Lote, imagem: Blob): Promise<void> {
   const texto = textoDoLote(l);
-  const link = buildLink(l.codigo);
+  const link = sanitizarUrlHttp(buildLink(l.codigo));
 
   const reader = new FileReader();
   const imgDataUrl = await new Promise<string>((resolve) => {
@@ -37,17 +58,28 @@ export async function copiarTextoEImagem(l: Lote, imagem: Blob): Promise<void> {
     reader.readAsDataURL(imagem);
   });
 
-  const itemHtml = l.item?.trim() ? `<p><b>Item:</b> ${l.item}</p>` : '';
+  const codigoSeguro = escapeHtml(l.codigo);
+  const itemSeguro = l.item?.trim() ? escapeHtml(l.item.trim()) : '';
+  const esterilizacaoSegura = escapeHtml(formatDataBR(l.esterilizacao));
+  const validadeSegura = escapeHtml(formatDataBR(l.validade));
+  const responsavelSeguro = escapeHtml(l.responsavel || '');
+  const linkSeguro = escapeHtml(link);
+  const imgSrcSeguro = imgDataUrl.startsWith('data:image/') ? escapeHtml(imgDataUrl) : '';
+
+  const itemHtml = itemSeguro ? `<p><b>Item:</b> ${itemSeguro}</p>` : '';
+  const imgHtml = imgSrcSeguro
+    ? `<img src="${imgSrcSeguro}" alt="Cartão do Lote ${codigoSeguro}" style="max-width: 100%; height: auto;" />`
+    : '';
 
   const htmlContent = `<div>
-    <p><b>Lote:</b> ${l.codigo}</p>
+    <p><b>Lote:</b> ${codigoSeguro}</p>
     ${itemHtml}
-    <p><b>Esterilização:</b> ${formatDataBR(l.esterilizacao)}</p>
-    <p><b>Validade:</b> ${formatDataBR(l.validade)}</p>
-    <p><b>Responsável:</b> ${l.responsavel}</p>
-    <p><b>Link:</b> <a href="${link}">${link}</a></p>
+    <p><b>Esterilização:</b> ${esterilizacaoSegura}</p>
+    <p><b>Validade:</b> ${validadeSegura}</p>
+    <p><b>Responsável:</b> ${responsavelSeguro}</p>
+    <p><b>Link:</b> <a href="${linkSeguro}">${linkSeguro}</a></p>
     <br/>
-    <img src="${imgDataUrl}" alt="Cartão do Lote ${l.codigo}" style="max-width: 100%; height: auto;" />
+    ${imgHtml}
   </div>`;
 
   if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {

@@ -6,6 +6,7 @@ import {
   hashPassword,
   isAdminConfigured,
   normalizarUsuario,
+  saveSessionRecord,
   verifySameOriginMutation,
 } from '@/lib/server-auth';
 
@@ -56,15 +57,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
-  const token = createSessionToken({
+  const payloadSessao = {
     usuario: usuarioLimpo,
     nome: nomeLimpo,
-    role: 'admin',
-  });
+    role: 'admin' as const,
+  };
+  const token = createSessionToken(payloadSessao);
+  await saveSessionRecord(token, payloadSessao);
 
   const res = NextResponse.json({
     autenticado: true,
     usuario: nomeLimpo,
+    usuarioLogin: usuarioLimpo,
     role: 'admin',
     storageMode,
     token,

@@ -11,9 +11,18 @@ export const createClient = (request: NextRequest) => {
     },
   });
 
+  if (
+    !supabaseUrl ||
+    !supabaseKey ||
+    supabaseUrl.includes('placeholder') ||
+    supabaseKey === 'placeholder-key'
+  ) {
+    return { supabase: null, supabaseResponse };
+  }
+
   const supabase = createServerClient(
-    supabaseUrl!,
-    supabaseKey!,
+    supabaseUrl,
+    supabaseKey,
     {
       cookies: {
         getAll() {

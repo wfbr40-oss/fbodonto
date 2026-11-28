@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import ToastProvider from '@/components/ToastProvider';
 import PWARegister from '@/components/PWARegister';
+import LogoPreloader from '@/components/LogoPreloader';
 import './globals.css';
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -61,10 +62,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={`${plusJakarta.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <link rel="preload" as="image" href="/logo.png" />
+      </head>
       <body
         suppressHydrationWarning
         className="font-sans bg-[#F6F4F3] text-[#505859] antialiased selection:bg-[#CDA9A8]/35 selection:text-[#3E4546]"
       >
+        <LogoPreloader />
         <PWARegister />
         <ToastProvider>{children}</ToastProvider>
       </body>
