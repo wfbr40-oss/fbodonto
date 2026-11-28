@@ -1533,12 +1533,12 @@ export default function CadastroPage() {
         </AnimatePresence>
 
         <aside
-          className={`no-print fixed lg:sticky top-0 lg:top-16 left-0 z-50 lg:z-20 h-screen lg:h-[calc(100vh-4rem)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:pt-0 lg:pb-0 w-64 bg-[#FCFBFB] border-r border-[#E5DFDE] flex flex-col justify-between transition-transform duration-200 ease-out shrink-0 ${
+          className={`no-print fixed lg:sticky top-0 bottom-0 lg:top-16 lg:bottom-auto left-0 z-50 lg:z-20 h-[100dvh] lg:h-[calc(100dvh-4rem)] max-h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:pt-0 lg:pb-0 w-64 bg-[#FCFBFB] border-r border-[#E5DFDE] flex flex-col justify-between overflow-y-auto transition-transform duration-200 ease-out shrink-0 ${
             sidebarMobile ? 'translate-x-0' : '-translate-x-full'
           } ${sidebarDesktop ? 'lg:translate-x-0 lg:flex' : 'lg:-translate-x-full lg:hidden'}`}
         >
-          <div>
-            <div className="flex items-center justify-between px-4 h-16 border-b border-[#E5DFDE] lg:hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="flex items-center justify-between px-4 h-16 border-b border-[#E5DFDE] lg:hidden shrink-0">
               <span className="font-bold text-[#3E4546] text-sm">Menu</span>
               <button
                 type="button"
@@ -1625,7 +1625,7 @@ export default function CadastroPage() {
             </nav>
           </div>
 
-          <div className="p-4 border-t border-[#E5DFDE] space-y-3 bg-[#F8F5F5]">
+          <div className="shrink-0 p-4 border-t border-[#E5DFDE] space-y-2.5 bg-[#F8F5F5]">
             <div className="flex items-center gap-3 px-2 py-1">
               <div className="w-9 h-9 rounded-full bg-white border border-[#DCD4D3] flex items-center justify-center text-[#9E7372] shrink-0">
                 <User className="w-4 h-4" />
