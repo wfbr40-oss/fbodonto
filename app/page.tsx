@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import {
   Lote,
@@ -29,6 +29,8 @@ import { carregarConfig, Config, RegraNumeracao } from '@/lib/config';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import Etiqueta from '@/components/Etiqueta';
 import LeitorQrCode from '@/components/LeitorQrCode';
+import ModalCartaoLote from '@/components/ModalCartaoLote';
+import { useToast } from '@/components/ToastProvider';
 import {
   Menu,
   X,
@@ -41,8 +43,6 @@ import {
   UserPlus,
   User,
   CheckCircle2,
-  AlertCircle,
-  ExternalLink,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -61,12 +61,14 @@ export default function CadastroPage() {
   const [senha, setSenha] = useState('');
   const [setupUsuario, setSetupUsuario] = useState('admin');
   const [setupSenha, setSetupSenha] = useState('');
-  const [erroLogin, setErroLogin] = useState('');
 
   const [config, setConfig] = useState<Config>(carregarConfig());
+  const [diasValidadeConfigInput, setDiasValidadeConfigInput] = useState<string>(() =>
+    String(carregarConfig().diasValidade)
+  );
+  const [configPronta, setConfigPronta] = useState<boolean>(false);
   const [configStorageMode, setConfigStorageMode] = useState<'supabase' | 'local'>('local');
   const [salvandoConfig, setSalvandoConfig] = useState<boolean>(false);
-  const [erroConfig, setErroConfig] = useState<string>('');
   const [abaAtiva, setAbaAtiva] = useState<AbaPrincipal>('novo');
   const [subAbaLote, setSubAbaLote] = useState<SubAbaLote>('cadastro');
   const [subAbaConfig, setSubAbaConfig] = useState<SubAbaConfig>('geral');
@@ -79,7 +81,7 @@ export default function CadastroPage() {
   const [diasValidade, setDiasValidade] = useState<number>(config.diasValidade);
   const [responsavel, setResponsavel] = useState('');
   const [quantidade, setQuantidade] = useState<number>(1);
-  const [turnoSelecionado, setTurnoSelecionado] = useState<TurnoLote>('auto');
+  const [turnoSelecionado] = useState<TurnoLote>('auto');
 
   const validade = addDias(esterilizacao, diasValidade);
 
@@ -87,10 +89,8 @@ export default function CadastroPage() {
   const [carregandoHistorico, setCarregandoHistorico] = useState<boolean>(false);
 
   const [loteCriado, setLoteCriado] = useState<Lote | null>(null);
-  const [erroCadastro, setErroCadastro] = useState<string>('');
+  const [loteModal, setLoteModal] = useState<Lote | null>(null);
   const [salvando, setSalvando] = useState<boolean>(false);
-
-  const [msgConfigSalva, setMsgConfigSalva] = useState<string>('');
 
   // Cadastro de usuário (Configurações -> Cadastrar Usuário)
   const [novoUsuario, setNovoUsuario] = useState('');
@@ -98,10 +98,15 @@ export default function CadastroPage() {
   const [novaSenha, setNovaSenha] = useState('1234');
   const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false);
   const [cadastrandoUsuario, setCadastrandoUsuario] = useState(false);
-  const [msgUsuarioSucesso, setMsgUsuarioSucesso] = useState('');
-  const [erroUsuario, setErroUsuario] = useState('');
   const [usuariosLista, setUsuariosLista] = useState<UsuarioRegistrado[]>([]);
   const [userStorageMode, setUserStorageMode] = useState<'supabase' | 'local'>('local');
+
+  const { mostrarPopup } = useToast();
+  const instrucoesMostradasRef = useRef(false);
+  const avisoLocalMostradoRef = useRef(false);
+  const avisoSetupMostradoRef = useRef(false);
+  const avisoTabelaConfigMostradoRef = useRef(false);
+  const avisoTabelaUsersMostradoRef = useRef(false);
 
   const pref = prefixoDia(esterilizacao);
   const lotesDoDia = historico.filter((l) => l.codigo.startsWith(pref));
@@ -130,8 +135,10 @@ export default function CadastroPage() {
   useEffect(() => {
     carregarConfigNuvem().then(({ config: cfg, storageMode }) => {
       setConfig(cfg);
+      setDiasValidadeConfigInput(String(cfg.diasValidade));
       setDiasValidade(cfg.diasValidade);
       setConfigStorageMode(storageMode);
+      setConfigPronta(true);
     });
     obterSessaoUsuario().then(({ autenticado: ok, usuario: nome, adminConfigured: configured, storageMode }) => {
       setAutenticado(ok);
@@ -146,9 +153,104 @@ export default function CadastroPage() {
     });
   }, [carregarDadosHistorico, carregarUsuarios]);
 
+  useEffect(() => {
+    if (carregandoAuth) return;
+
+    if (!isSupabaseConfigured && !avisoLocalMostradoRef.current) {
+      avisoLocalMostradoRef.current = true;
+      mostrarPopup({
+        idUnico: 'aviso-modo-local',
+        tipo: 'aviso',
+        duracaoMs: 5000,
+        titulo: 'Armazenamento Local',
+        mensagem:
+          'Variáveis do Supabase não configuradas. Os dados estão sendo salvos localmente no navegador.',
+      });
+    }
+
+    if (!autenticado && !adminConfigured && !avisoSetupMostradoRef.current) {
+      avisoSetupMostradoRef.current = true;
+      mostrarPopup({
+        idUnico: 'aviso-primeiro-acesso',
+        tipo: 'aviso',
+        duracaoMs: 5000,
+        titulo: 'Primeiro Acesso',
+        mensagem: 'Defina a senha inicial do usuário administrador para ativar o sistema.',
+      });
+    }
+  }, [carregandoAuth, autenticado, adminConfigured, mostrarPopup]);
+
+  useEffect(() => {
+    if (!autenticado || !configPronta || instrucoesMostradasRef.current) return;
+    try {
+      const jaViu = localStorage.getItem('fbodonto_instrucoes_impressao_vistas');
+      if (!jaViu) {
+        instrucoesMostradasRef.current = true;
+        localStorage.setItem('fbodonto_instrucoes_impressao_vistas', '1');
+        mostrarPopup({
+          idUnico: 'instrucoes-impressao',
+          tipo: 'instrucoes',
+          duracaoMs: 15000,
+          titulo: 'Instruções de Impressão',
+          mensagem: [
+            'Configure a impressora térmica ou comum para 100% de escala (sem "ajustar à página").',
+            `Dimensões atuais: ${config.larguraMm}mm × ${config.alturaMm}mm.`,
+            'O código do lote serve como link curto para leitura via QR Code.',
+          ],
+        });
+      }
+    } catch {
+      // ignora erro de localStorage
+    }
+  }, [autenticado, configPronta, config.larguraMm, config.alturaMm, mostrarPopup]);
+
+  useEffect(() => {
+    if (!autenticado || abaAtiva !== 'config' || !isSupabaseConfigured) return;
+
+    if (
+      subAbaConfig === 'geral' &&
+      configPronta &&
+      configStorageMode === 'local' &&
+      !avisoTabelaConfigMostradoRef.current
+    ) {
+      avisoTabelaConfigMostradoRef.current = true;
+      mostrarPopup({
+        idUnico: 'aviso-tabela-config',
+        tipo: 'aviso',
+        duracaoMs: 5000,
+        titulo: 'Atenção',
+        mensagem:
+          'A tabela configuracoes ainda não foi criada no Supabase. Execute supabase/schema.sql no SQL Editor para salvar na nuvem.',
+      });
+    }
+
+    if (
+      subAbaConfig === 'usuarios' &&
+      userStorageMode === 'local' &&
+      !avisoTabelaUsersMostradoRef.current
+    ) {
+      avisoTabelaUsersMostradoRef.current = true;
+      mostrarPopup({
+        idUnico: 'aviso-tabela-usuarios',
+        tipo: 'aviso',
+        duracaoMs: 5000,
+        titulo: 'Atenção',
+        mensagem:
+          'A tabela usuarios ainda não foi criada no Supabase. Execute supabase/schema.sql no SQL Editor para salvar na nuvem.',
+      });
+    }
+  }, [
+    autenticado,
+    abaAtiva,
+    subAbaConfig,
+    configPronta,
+    configStorageMode,
+    userStorageMode,
+    mostrarPopup,
+  ]);
+
   const handleSetupAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErroLogin('');
     try {
       const nome = await configurarAdminInicial(setupUsuario, setupSenha);
       setAdminConfigured(true);
@@ -158,13 +260,12 @@ export default function CadastroPage() {
       carregarUsuarios();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao configurar acesso inicial';
-      setErroLogin(msg);
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
     }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErroLogin('');
     try {
       const nome = await login(usuario, senha);
       setAutenticado(true);
@@ -173,7 +274,7 @@ export default function CadastroPage() {
       carregarUsuarios();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao autenticar';
-      setErroLogin(msg);
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
     }
   };
 
@@ -202,23 +303,27 @@ export default function CadastroPage() {
 
   const handleSalvarConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErroConfig('');
-    setMsgConfigSalva('');
     setSalvandoConfig(true);
     try {
-      const { config: salva, storageMode } = await salvarConfigNuvem(config);
+      const parsedDias = parseInt(diasValidadeConfigInput, 10);
+      const diasSanitizado = isNaN(parsedDias) || parsedDias < 1 ? 1 : Math.min(365, parsedDias);
+      const configParaSalvar = { ...config, diasValidade: diasSanitizado };
+      const { config: salva, storageMode } = await salvarConfigNuvem(configParaSalvar);
       setConfig(salva);
+      setDiasValidadeConfigInput(String(salva.diasValidade));
       setDiasValidade(salva.diasValidade);
       setConfigStorageMode(storageMode);
-      setMsgConfigSalva(
-        storageMode === 'supabase'
-          ? 'Configurações salvas no Supabase com sucesso.'
-          : 'Configurações salvas localmente. Execute supabase/schema.sql para sincronizar na nuvem.'
-      );
-      setTimeout(() => setMsgConfigSalva(''), 4000);
+      mostrarPopup({
+        tipo: storageMode === 'supabase' ? 'sucesso' : 'aviso',
+        duracaoMs: 5000,
+        mensagem:
+          storageMode === 'supabase'
+            ? 'Configurações salvas no Supabase com sucesso.'
+            : 'Configurações salvas localmente. Execute supabase/schema.sql para sincronizar na nuvem.',
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao salvar configurações.';
-      setErroConfig(msg);
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
     } finally {
       setSalvandoConfig(false);
     }
@@ -226,8 +331,6 @@ export default function CadastroPage() {
 
   const handleCadastrarUsuario = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErroUsuario('');
-    setMsgUsuarioSucesso('');
     setCadastrandoUsuario(true);
 
     try {
@@ -244,10 +347,14 @@ export default function CadastroPage() {
       setNovoNome('');
       setNovaSenha('1234');
 
-      setMsgUsuarioSucesso(`Usuário "${res.usuario.usuario}" cadastrado com sucesso!`);
+      mostrarPopup({
+        tipo: 'sucesso',
+        duracaoMs: 5000,
+        mensagem: `Usuário "${res.usuario.usuario}" cadastrado com sucesso!`,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao cadastrar usuário.';
-      setErroUsuario(msg);
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
     } finally {
       setCadastrandoUsuario(false);
     }
@@ -255,10 +362,12 @@ export default function CadastroPage() {
 
   const handleCadastrarLote = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErroCadastro('');
 
     if (validade < esterilizacao) {
-      setErroCadastro('A data de validade não pode ser anterior à data de esterilização.');
+      mostrarPopup({
+        tipo: 'erro',
+        mensagem: 'A data de validade não pode ser anterior à data de esterilização.',
+      });
       return;
     }
 
@@ -280,9 +389,14 @@ export default function CadastroPage() {
       setLoteCriado(novo);
       await carregarDadosHistorico();
       setItem('');
+      mostrarPopup({
+        tipo: 'sucesso',
+        duracaoMs: 5000,
+        mensagem: `Lote ${novo.codigo} cadastrado com sucesso!`,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao cadastrar lote.';
-      setErroCadastro(msg);
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
     } finally {
       setSalvando(false);
     }
@@ -322,18 +436,8 @@ export default function CadastroPage() {
             <p className="text-sm text-[#7A8283] mt-1">Controle e Rastreabilidade de Esterilização</p>
           </div>
 
-          {!isSupabaseConfigured && (
-            <div className="mb-5 p-3 bg-[#F7F1F1] border border-[#E3D3D2] rounded-lg text-xs text-[#505859]">
-              <b>Modo Demonstração (Local):</b> Variáveis do Supabase não configuradas. Os dados serão salvos no navegador.
-            </div>
-          )}
-
           {!adminConfigured ? (
             <form onSubmit={handleSetupAdmin} className="space-y-4">
-              <div className="p-3 bg-[#F7F1F1] border border-[#E3D3D2] rounded-lg text-xs text-[#505859]">
-                <b>Primeiro Acesso:</b> Defina a senha inicial do usuário administrador para ativar o sistema.
-              </div>
-
               <div>
                 <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                   Usuário Administrador
@@ -361,13 +465,6 @@ export default function CadastroPage() {
                   placeholder="Mínimo 4 caracteres (ex: admin)"
                 />
               </div>
-
-              {erroLogin && (
-                <div className="p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] text-xs rounded-lg flex items-start space-x-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{erroLogin}</span>
-                </div>
-              )}
 
               <button
                 type="submit"
@@ -402,13 +499,6 @@ export default function CadastroPage() {
                   placeholder="••••••••"
                 />
               </div>
-
-              {erroLogin && (
-                <div className="p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] text-xs rounded-lg flex items-start space-x-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{erroLogin}</span>
-                </div>
-              )}
 
               <button
                 type="submit"
@@ -566,12 +656,6 @@ export default function CadastroPage() {
         </aside>
 
         <main className="flex-1 min-w-0 max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full">
-          {!isSupabaseConfigured && (
-            <div className="mb-6 p-4 bg-[#F7F1F1] border border-[#E3D3D2] rounded-xl text-xs text-[#505859] no-print">
-              <b>Aviso:</b> Usando armazenamento local (localStorage). Para sincronizar em nuvem (Supabase), configure as variáveis de ambiente .env.
-            </div>
-          )}
-
           {abaAtiva === 'novo' && (
             <div className="space-y-6">
               <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit no-print">
@@ -600,8 +684,12 @@ export default function CadastroPage() {
               </div>
 
               {subAbaLote === 'cadastro' ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="md:col-span-2 bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 no-print">
+                <div className={loteCriado ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'max-w-3xl mx-auto'}>
+                  <div
+                    className={`${
+                      loteCriado ? 'md:col-span-2' : ''
+                    } bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 no-print`}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-5 pb-4 border-b border-[#EDE7E6]">
                       <h2 className="text-lg font-bold text-[#3E4546]">Novo Lote de Esterilização</h2>
                       <span className="text-xs font-mono tabular-nums text-[#7A8283]">
@@ -707,13 +795,6 @@ export default function CadastroPage() {
                         />
                       </div>
 
-                      {erroCadastro && (
-                        <div className="p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] text-xs rounded-lg flex items-center space-x-2">
-                          <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span>{erroCadastro}</span>
-                        </div>
-                      )}
-
                       <button
                         type="submit"
                         disabled={salvando}
@@ -725,21 +806,8 @@ export default function CadastroPage() {
                     </form>
                   </div>
 
-                  <div className="space-y-6 no-print">
-                    <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#9E7372] mb-3">
-                        Instruções de Impressão
-                      </h3>
-                      <ul className="text-xs text-[#6E7677] space-y-2 list-disc list-inside leading-relaxed">
-                        <li>Configure a impressora térmica ou comum para 100% de escala (sem &quot;ajustar à página&quot;).</li>
-                        <li>
-                          Dimensões atuais: {config.larguraMm}mm &times; {config.alturaMm}mm.
-                        </li>
-                        <li>O código do lote serve como link curto para leitura via QR Code.</li>
-                      </ul>
-                    </div>
-
-                    {loteCriado && (
+                  {loteCriado && (
+                    <div className="space-y-6 no-print">
                       <div className="bg-[#F8F3F3] border border-[#CDA9A8]/65 rounded-xl p-5 text-[#3E4546] space-y-3">
                         <div className="flex items-center space-x-2 font-bold text-[#3E4546]">
                           <CheckCircle2 className="w-5 h-5 text-[#9E7372] shrink-0" />
@@ -764,19 +832,18 @@ export default function CadastroPage() {
                             <Printer className="w-4 h-4 text-[#CDA9A8]" />
                             <span>Imprimir</span>
                           </button>
-                          <a
-                            href={`/${loteCriado.codigo}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3.5 py-2.5 bg-white border border-[#DCD4D3] hover:bg-[#F4EFEF] text-[#505859] font-semibold rounded-lg text-xs flex items-center space-x-1.5 whitespace-nowrap transition"
+                          <button
+                            type="button"
+                            onClick={() => setLoteModal(loteCriado)}
+                            className="px-3.5 py-2.5 bg-white border border-[#DCD4D3] hover:bg-[#F4EFEF] text-[#505859] font-semibold rounded-lg text-xs flex items-center space-x-1.5 whitespace-nowrap transition cursor-pointer"
                           >
-                            <ExternalLink className="w-4 h-4 text-[#9E7372]" />
+                            <Eye className="w-4 h-4 text-[#9E7372]" />
                             <span>Cartão</span>
-                          </a>
+                          </button>
                         </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 no-print">
@@ -824,15 +891,14 @@ export default function CadastroPage() {
                                   <Printer className="w-3.5 h-3.5 text-[#9E7372]" />
                                   <span>Reimprimir</span>
                                 </button>
-                                <a
-                                  href={`/${l.codigo}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="px-2.5 py-1 bg-white hover:bg-[#F4EFEF] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded transition inline-flex items-center space-x-1"
+                                <button
+                                  type="button"
+                                  onClick={() => setLoteModal(l)}
+                                  className="px-2.5 py-1 bg-white hover:bg-[#F4EFEF] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
                                 >
-                                  <ExternalLink className="w-3.5 h-3.5 text-[#7A8283]" />
+                                  <Eye className="w-3.5 h-3.5 text-[#7A8283]" />
                                   <span>Cartão</span>
-                                </a>
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -893,26 +959,6 @@ export default function CadastroPage() {
                     Configurações de Impressão e Consultório
                   </h2>
 
-                  {isSupabaseConfigured && configStorageMode === 'local' && (
-                    <div className="mb-4 p-3 bg-[#F7F1F1] border border-[#E3D3D2] rounded-lg text-xs text-[#505859]">
-                      <b>Atenção:</b> A tabela <span className="font-mono">configuracoes</span> ainda não foi criada no Supabase. Execute o script atualizado em <span className="font-mono">supabase/schema.sql</span> no SQL Editor do Supabase para salvar na nuvem.
-                    </div>
-                  )}
-
-                  {erroConfig && (
-                    <div className="mb-4 p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] rounded-lg text-xs font-semibold flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{erroConfig}</span>
-                    </div>
-                  )}
-
-                  {msgConfigSalva && (
-                    <div className="mb-4 p-3 bg-[#EDF5F0] border border-[#C8DFCF] text-[#2E6045] rounded-lg text-xs font-semibold flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 shrink-0" />
-                      <span>{msgConfigSalva}</span>
-                    </div>
-                  )}
-
                   <form onSubmit={handleSalvarConfig} className="space-y-4">
                     <div>
                       <label className="block text-xs font-semibold text-[#505859] mb-1.5">
@@ -963,12 +1009,26 @@ export default function CadastroPage() {
                         Dias de Validade Padrão
                       </label>
                       <input
-                        type="number"
-                        min="1"
-                        max="365"
-                        value={config.diasValidade}
-                        onChange={(e) => setConfig({ ...config, diasValidade: Number(e.target.value) })}
-                        required
+                        type="text"
+                        inputMode="numeric"
+                        value={diasValidadeConfigInput}
+                        onChange={(e) => {
+                          const apenasDigitos = e.target.value.replace(/\D/g, '');
+                          setDiasValidadeConfigInput(apenasDigitos);
+                          const parsed = parseInt(apenasDigitos, 10);
+                          if (!isNaN(parsed) && parsed >= 1) {
+                            setConfig((prev) => ({
+                              ...prev,
+                              diasValidade: Math.min(365, parsed),
+                            }));
+                          }
+                        }}
+                        onBlur={() => {
+                          const parsed = parseInt(diasValidadeConfigInput, 10);
+                          const valido = isNaN(parsed) || parsed < 1 ? 1 : Math.min(365, parsed);
+                          setDiasValidadeConfigInput(String(valido));
+                          setConfig((prev) => ({ ...prev, diasValidade: valido }));
+                        }}
                         className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
                       />
                     </div>
@@ -1049,12 +1109,6 @@ export default function CadastroPage() {
                       <span className="font-mono font-semibold text-[#9E7372]">1234</span>.
                     </p>
 
-                    {isSupabaseConfigured && userStorageMode === 'local' && (
-                      <div className="mb-4 p-3 bg-[#F7F1F1] border border-[#E3D3D2] rounded-lg text-xs text-[#505859]">
-                        <b>Atenção:</b> A tabela <span className="font-mono">usuarios</span> ainda não foi criada no Supabase. Execute o script atualizado em <span className="font-mono">supabase/schema.sql</span> no SQL Editor do Supabase para salvar os usuários na nuvem.
-                      </div>
-                    )}
-
                     <form onSubmit={handleCadastrarUsuario} className="space-y-4">
                       <div>
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
@@ -1107,20 +1161,6 @@ export default function CadastroPage() {
                         </div>
                       </div>
 
-                      {erroUsuario && (
-                        <div className="p-3 bg-[#F9EDED] border border-[#E8C8C8] text-[#8C3B3B] text-xs rounded-lg flex items-start gap-2">
-                          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                          <span>{erroUsuario}</span>
-                        </div>
-                      )}
-
-                      {msgUsuarioSucesso && (
-                        <div className="p-3 bg-[#EDF5F0] border border-[#C8DFCF] text-[#2E6045] text-xs rounded-lg flex items-start gap-2">
-                          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                          <span>{msgUsuarioSucesso}</span>
-                        </div>
-                      )}
-
                       <button
                         type="submit"
                         disabled={cadastrandoUsuario}
@@ -1166,6 +1206,13 @@ export default function CadastroPage() {
                 ))}
               </div>
             </div>
+          )}
+          {loteModal && (
+            <ModalCartaoLote
+              lote={loteModal}
+              nomeConsultorio={config.nomeConsultorio}
+              onClose={() => setLoteModal(null)}
+            />
           )}
         </main>
       </div>

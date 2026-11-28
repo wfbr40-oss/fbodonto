@@ -3,13 +3,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Lote } from '@/lib/lote';
+import { Lote, buildLink } from '@/lib/lote';
 import { getLote, carregarConfigNuvem } from '@/lib/db';
-import { carregarLogo } from '@/lib/logo';
 import { gerarImagem, copiarTextoEImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
-import CartaoLote from '@/components/CartaoLote';
+import CartaoPreviewResponsivo from '@/components/CartaoPreviewResponsivo';
+import { useToast } from '@/components/ToastProvider';
 import { carregarConfig } from '@/lib/config';
-import { Copy, Download, Check, AlertCircle, RefreshCw } from 'lucide-react';
+import { Copy, Download, AlertCircle, RefreshCw, Link as LinkIcon } from 'lucide-react';
 
 export default function LeituraLotePage() {
   const params = useParams();
@@ -17,13 +17,12 @@ export default function LeituraLotePage() {
   const codigo = codigoRaw.replace(/[^0-9]/g, '');
 
   const [lote, setLote] = useState<Lote | null>(null);
-  const [logo, setLogo] = useState<string | null>(null);
   const [nomeConsultorio, setNomeConsultorio] = useState<string>(() => carregarConfig().nomeConsultorio);
   const [carregando, setCarregando] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  const [msgCopia, setMsgCopia] = useState<string | null>(null);
   const [processando, setProcessando] = useState<boolean>(false);
+  const { mostrarPopup } = useToast();
 
   const carregarDados = useCallback(async () => {
     setCarregando(true);
@@ -35,14 +34,12 @@ export default function LeituraLotePage() {
         return;
       }
 
-      const [loteEncontrado, logoCarregada, configRes] = await Promise.all([
+      const [loteEncontrado, configRes] = await Promise.all([
         getLote(codigo),
-        carregarLogo(),
         carregarConfigNuvem(),
       ]);
 
       setLote(loteEncontrado);
-      setLogo(logoCarregada || '/logo.png');
       setNomeConsultorio(configRes.config.nomeConsultorio);
     } catch (err) {
       console.error(err);
@@ -57,9 +54,14 @@ export default function LeituraLotePage() {
     carregarDados();
   }, [carregarDados]);
 
-  const dispararMsg = (msg: string) => {
-    setMsgCopia(msg);
-    setTimeout(() => setMsgCopia(null), 3000);
+  const handleCopiarLink = async () => {
+    if (!lote) return;
+    try {
+      await navigator.clipboard.writeText(buildLink(lote.codigo));
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Link copiado com sucesso!' });
+    } catch {
+      mostrarPopup({ tipo: 'erro', mensagem: 'Erro ao copiar link.' });
+    }
   };
 
   const handleCopiarTextoEImg = async () => {
@@ -70,10 +72,10 @@ export default function LeituraLotePage() {
       if (!el) throw new Error('Elemento do cartão não encontrado');
       const blob = await gerarImagem(el);
       await copiarTextoEImagem(lote, blob);
-      dispararMsg('Texto e imagem copiados com sucesso!');
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Texto e imagem copiados com sucesso!' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao copiar imagem. Copiado apenas texto.';
-      dispararMsg(msg);
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
     } finally {
       setProcessando(false);
     }
@@ -83,9 +85,9 @@ export default function LeituraLotePage() {
     if (!lote) return;
     try {
       await copiarTexto(lote);
-      dispararMsg('Texto e link copiados!');
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Texto e link copiados!' });
     } catch {
-      dispararMsg('Erro ao copiar texto.');
+      mostrarPopup({ tipo: 'erro', mensagem: 'Erro ao copiar texto.' });
     }
   };
 
@@ -97,23 +99,23 @@ export default function LeituraLotePage() {
       if (!el) throw new Error('Elemento do cartão não encontrado');
       const blob = await gerarImagem(el);
       baixarImagem(lote, blob);
-      dispararMsg('Imagem baixada com sucesso!');
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Imagem baixada com sucesso!' });
     } catch {
-      dispararMsg('Erro ao gerar imagem para download.');
+      mostrarPopup({ tipo: 'erro', mensagem: 'Erro ao gerar imagem para download.' });
     } finally {
       setProcessando(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col items-center justify-center p-4 sm:p-6">
+    <div className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col items-center justify-center p-3 sm:p-6">
       {carregando ? (
         <div className="bg-[#FCFBFB] rounded-2xl p-8 border border-[#E5DFDE] text-center max-w-sm w-full">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#CDA9A8] border-t-[#505859] mx-auto mb-4" />
           <p className="text-sm text-[#6E7677]">Carregando informações do lote...</p>
         </div>
       ) : erro ? (
-        <div className="bg-[#FCFBFB] rounded-2xl p-8 border border-[#E5DFDE] text-center max-w-md w-full space-y-4">
+        <div className="bg-[#FCFBFB] rounded-2xl p-6 sm:p-8 border border-[#E5DFDE] text-center max-w-md w-full space-y-4">
           <AlertCircle className="w-11 h-11 text-[#9E7372] mx-auto" />
           <h2 className="text-lg font-bold text-[#3E4546]">Erro de Conexão</h2>
           <p className="text-sm text-[#6E7677]">{erro}</p>
@@ -126,7 +128,7 @@ export default function LeituraLotePage() {
           </button>
         </div>
       ) : !lote ? (
-        <div className="bg-[#FCFBFB] rounded-2xl p-8 border border-[#E5DFDE] text-center max-w-md w-full space-y-4">
+        <div className="bg-[#FCFBFB] rounded-2xl p-6 sm:p-8 border border-[#E5DFDE] text-center max-w-md w-full space-y-4">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#CDA9A8]/25 text-[#505859] mx-auto">
             <AlertCircle className="w-7 h-7" />
           </div>
@@ -142,54 +144,63 @@ export default function LeituraLotePage() {
           </Link>
         </div>
       ) : (
-        <div className="flex flex-col items-center space-y-6 max-w-xl w-full">
-          {msgCopia && (
-            <div className="bg-[#505859] text-white px-4 py-2.5 rounded-xl text-sm font-medium border border-[#CDA9A8]/40 flex items-center space-x-2">
-              <Check className="w-4 h-4 text-[#CDA9A8]" />
-              <span>{msgCopia}</span>
+        <div className="bg-[#FCFBFB] rounded-2xl border border-[#E5DFDE] shadow-sm max-w-2xl w-full p-4 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#EDE7E6]">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-[#3E4546]">
+                Cartão do Lote{' '}
+                <span className="font-mono tabular-nums text-[#9E7372]">{lote.codigo}</span>
+              </h1>
+              <p className="text-xs text-[#7A8283] truncate">
+                {nomeConsultorio} · Rastreabilidade Garantida
+              </p>
             </div>
-          )}
-
-          <div className="overflow-x-auto w-full flex justify-center rounded-2xl border border-[#E5DFDE] bg-white">
-            <CartaoLote lote={lote} logo={logo} nomeConsultorio={nomeConsultorio} />
           </div>
 
-          <div className="bg-[#FCFBFB] rounded-2xl p-6 border border-[#E5DFDE] w-full space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#9E7372] mb-2">
-              Ações para o Prontuário
-            </h3>
+          <div className="border border-[#E5DFDE] rounded-xl bg-[#F8F5F5] py-1.5 px-2.5 sm:py-2 sm:px-4">
+            <CartaoPreviewResponsivo lote={lote} nomeConsultorio={nomeConsultorio} />
+          </div>
 
+          <div className="space-y-2.5 pt-1">
             <button
-              onClick={handleCopiarTextoEImg}
-              disabled={processando}
-              className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white font-semibold rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer"
+              type="button"
+              onClick={handleCopiarLink}
+              className="w-full py-3 px-4 bg-[#505859] hover:bg-[#3E4546] text-white text-sm font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Copy className="w-5 h-5 text-[#CDA9A8]" />
-              <span>{processando ? 'Processando...' : 'Copiar texto e imagem juntos'}</span>
+              <LinkIcon className="w-4 h-4 text-[#CDA9A8] shrink-0" />
+              <span>Copiar apenas o link</span>
             </button>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
-                onClick={handleCopiarApenasTexto}
-                className="py-2.5 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] font-semibold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                type="button"
+                onClick={handleCopiarTextoEImg}
+                disabled={processando}
+                className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] disabled:opacity-50 text-[#505859] border border-[#E5DFDE] font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Copy className="w-4 h-4" />
-                <span>Copiar só texto/link</span>
+                <Copy className="w-3.5 h-3.5 shrink-0" />
+                <span>{processando ? 'Processando...' : 'Copiar texto e imagem'}</span>
               </button>
 
               <button
+                type="button"
+                onClick={handleCopiarApenasTexto}
+                className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5 shrink-0" />
+                <span>Copiar texto</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleBaixarImg}
                 disabled={processando}
-                className="py-2.5 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] font-semibold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] disabled:opacity-50 text-[#505859] border border-[#E5DFDE] font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5 shrink-0" />
                 <span>Baixar imagem</span>
               </button>
             </div>
-          </div>
-
-          <div className="text-center text-xs text-[#7A8283]">
-            {nomeConsultorio} · Rastreabilidade Garantida
           </div>
         </div>
       )}

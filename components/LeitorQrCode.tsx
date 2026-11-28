@@ -5,19 +5,19 @@ import jsQR from 'jsqr';
 import { Lote } from '@/lib/lote';
 import { getLote } from '@/lib/db';
 import { gerarImagem, copiarTextoEImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
-import CartaoLote from '@/components/CartaoLote';
+import CartaoPreviewResponsivo from '@/components/CartaoPreviewResponsivo';
+import ModalCartaoLote from '@/components/ModalCartaoLote';
+import { useToast } from '@/components/ToastProvider';
 import {
   Camera,
   CameraOff,
   Search,
   Upload,
-  AlertCircle,
-  Check,
   Copy,
   Download,
   Printer,
   RotateCcw,
-  ExternalLink,
+  Eye,
 } from 'lucide-react';
 
 type LeitorQrCodeProps = {
@@ -36,11 +36,11 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
   const [cameraAtiva, setCameraAtiva] = useState(false);
   const [codigoManual, setCodigoManual] = useState('');
   const [carregando, setCarregando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
   const [loteEncontrado, setLoteEncontrado] = useState<Lote | null>(null);
   const [ultimoCodigoLido, setUltimoCodigoLido] = useState<string | null>(null);
   const [processandoExport, setProcessandoExport] = useState(false);
-  const [msgFeedback, setMsgFeedback] = useState<string | null>(null);
+  const [modalCartaoAberto, setModalCartaoAberto] = useState(false);
+  const { mostrarPopup } = useToast();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -73,12 +73,14 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
     async (texto: string) => {
       const codigo = extrairCodigoLote(texto);
       if (!codigo) {
-        setErro('QR Code ou código inválido. Informe um código de lote com 10 dígitos.');
+        mostrarPopup({
+          tipo: 'erro',
+          mensagem: 'QR Code ou código inválido. Informe um código de lote com 10 dígitos.',
+        });
         return;
       }
 
       pararCamera();
-      setErro(null);
       setCarregando(true);
       setUltimoCodigoLido(codigo);
 
@@ -86,25 +88,34 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
         const lote = await getLote(codigo);
         if (!lote) {
           setLoteEncontrado(null);
-          setErro(`Lote ${codigo} não encontrado no sistema.`);
+          mostrarPopup({
+            tipo: 'erro',
+            mensagem: `Lote ${codigo} não encontrado no sistema.`,
+          });
         } else {
           setLoteEncontrado(lote);
         }
       } catch {
-        setErro('Erro de conexão ao consultar o lote.');
+        mostrarPopup({
+          tipo: 'erro',
+          mensagem: 'Erro de conexão ao consultar o lote.',
+        });
       } finally {
         setCarregando(false);
       }
     },
-    [pararCamera]
+    [pararCamera, mostrarPopup]
   );
 
   const iniciarCamera = async () => {
-    setErro(null);
     setLoteEncontrado(null);
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setErro('Câmera não disponível neste navegador. Use a leitura por imagem ou digite o código do lote.');
+      mostrarPopup({
+        tipo: 'erro',
+        mensagem:
+          'Câmera não disponível neste navegador. Use a leitura por imagem ou digite o código do lote.',
+      });
       return;
     }
 
@@ -150,14 +161,17 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
       rafRef.current = requestAnimationFrame(escanearFrame);
     } catch {
       pararCamera();
-      setErro('Não foi possível acessar a câmera. Verifique as permissões do navegador ou envie uma foto do QR Code.');
+      mostrarPopup({
+        tipo: 'erro',
+        mensagem:
+          'Não foi possível acessar a câmera. Verifique as permissões do navegador ou envie uma foto do QR Code.',
+      });
     }
   };
 
   const handleLerImagem = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setErro(null);
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -168,7 +182,7 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          setErro('Não foi possível processar a imagem.');
+          mostrarPopup({ tipo: 'erro', mensagem: 'Não foi possível processar a imagem.' });
           return;
         }
         ctx.drawImage(img, 0, 0);
@@ -179,10 +193,14 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
         if (code && code.data) {
           void buscarLotePorTexto(code.data);
         } else {
-          setErro('Nenhum QR Code identificado nesta imagem. Tente aproximar e enquadrar melhor.');
+          mostrarPopup({
+            tipo: 'erro',
+            mensagem:
+              'Nenhum QR Code identificado nesta imagem. Tente aproximar e enquadrar melhor.',
+          });
         }
       };
-      img.onerror = () => setErro('Arquivo de imagem inválido.');
+      img.onerror = () => mostrarPopup({ tipo: 'erro', mensagem: 'Arquivo de imagem inválido.' });
       if (typeof reader.result === 'string') {
         img.src = reader.result;
       }
@@ -197,11 +215,6 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
     void buscarLotePorTexto(codigoManual.trim());
   };
 
-  const dispararFeedback = (msg: string) => {
-    setMsgFeedback(msg);
-    setTimeout(() => setMsgFeedback(null), 3000);
-  };
-
   const handleCopiarTextoEImg = async () => {
     if (!loteEncontrado) return;
     setProcessandoExport(true);
@@ -210,10 +223,10 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
       if (!el) throw new Error('Cartão não encontrado');
       const blob = await gerarImagem(el);
       await copiarTextoEImagem(loteEncontrado, blob);
-      dispararFeedback('Texto e imagem copiados com sucesso!');
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Texto e imagem copiados com sucesso!' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao copiar imagem.';
-      dispararFeedback(msg);
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
     } finally {
       setProcessandoExport(false);
     }
@@ -223,9 +236,9 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
     if (!loteEncontrado) return;
     try {
       await copiarTexto(loteEncontrado);
-      dispararFeedback('Texto e link copiados!');
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Texto e link copiados!' });
     } catch {
-      dispararFeedback('Erro ao copiar texto.');
+      mostrarPopup({ tipo: 'erro', mensagem: 'Erro ao copiar texto.' });
     }
   };
 
@@ -237,9 +250,9 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
       if (!el) throw new Error('Cartão não encontrado');
       const blob = await gerarImagem(el);
       baixarImagem(loteEncontrado, blob);
-      dispararFeedback('Imagem baixada com sucesso!');
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Imagem baixada com sucesso!' });
     } catch {
-      dispararFeedback('Erro ao gerar imagem para download.');
+      mostrarPopup({ tipo: 'erro', mensagem: 'Erro ao gerar imagem para download.' });
     } finally {
       setProcessandoExport(false);
     }
@@ -352,12 +365,6 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#CDA9A8] border-t-[#505859] mx-auto" />
               <p className="text-sm text-[#6E7677]">Consultando lote {ultimoCodigoLido}...</p>
             </div>
-          ) : erro ? (
-            <div className="py-8 text-center space-y-3">
-              <AlertCircle className="w-10 h-10 text-[#9E7372] mx-auto" />
-              <p className="text-sm font-semibold text-[#3E4546]">Não foi possível ler o lote</p>
-              <p className="text-xs text-[#8C3B3B] bg-[#F9EDED] border border-[#E8C8C8] rounded-lg p-3">{erro}</p>
-            </div>
           ) : loteEncontrado ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
@@ -368,7 +375,6 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                   type="button"
                   onClick={() => {
                     setLoteEncontrado(null);
-                    setErro(null);
                     setCodigoManual('');
                   }}
                   className="px-3 py-1.5 text-xs font-semibold text-[#6E7677] hover:text-[#3E4546] hover:bg-[#F4EFEF] rounded-lg transition inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
@@ -378,21 +384,11 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                 </button>
               </div>
 
-              {msgFeedback && (
-                <div className="p-2.5 bg-[#EDF5F0] border border-[#C8DFCF] text-[#2E6045] rounded-lg text-xs font-semibold flex items-center gap-2">
-                  <Check className="w-4 h-4 shrink-0" />
-                  <span>{msgFeedback}</span>
-                </div>
-              )}
-
-              <div className="overflow-x-auto border border-[#E5DFDE] rounded-xl bg-[#F8F5F5] p-2 sm:p-4 flex justify-center items-center">
-                <div className="scale-[0.65] xs:scale-[0.72] sm:scale-[0.85] origin-top -my-6 sm:-my-4">
-                  <CartaoLote
-                    lote={loteEncontrado}
-                    logo="/logo.png"
-                    nomeConsultorio={nomeConsultorio}
-                  />
-                </div>
+              <div className="border border-[#E5DFDE] rounded-xl bg-[#F8F5F5] p-2.5 sm:p-4">
+                <CartaoPreviewResponsivo
+                  lote={loteEncontrado}
+                  nomeConsultorio={nomeConsultorio}
+                />
               </div>
 
               <div className="space-y-2 pt-2">
@@ -436,15 +432,14 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                   </button>
                 </div>
 
-                <a
-                  href={`/${loteEncontrado.codigo}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2 px-3 border border-[#E5DFDE] bg-white hover:bg-[#F8F5F5] text-[#505859] text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
+                <button
+                  type="button"
+                  onClick={() => setModalCartaoAberto(true)}
+                  className="w-full py-2 px-3 border border-[#E5DFDE] bg-white hover:bg-[#F8F5F5] text-[#505859] text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <ExternalLink className="w-3.5 h-3.5 text-[#9E7372]" />
-                  <span>Abrir página pública do cartão</span>
-                </a>
+                  <Eye className="w-3.5 h-3.5 text-[#9E7372]" />
+                  <span>Abrir cartão completo no app</span>
+                </button>
               </div>
             </div>
           ) : (
@@ -458,6 +453,14 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
           )}
         </div>
       </div>
+
+      {modalCartaoAberto && loteEncontrado && (
+        <ModalCartaoLote
+          lote={loteEncontrado}
+          nomeConsultorio={nomeConsultorio}
+          onClose={() => setModalCartaoAberto(false)}
+        />
+      )}
     </div>
   );
 }

@@ -8,11 +8,18 @@ type CartaoLoteProps = {
   lote: Lote;
   logo: string | null;
   nomeConsultorio?: string;
+  exportId?: string;
 };
 
-export default function CartaoLote({ lote, logo, nomeConsultorio = 'FB Odonto' }: CartaoLoteProps) {
+export default function CartaoLote({
+  lote,
+  logo,
+  nomeConsultorio = 'FB Odonto',
+  exportId = 'cartao-lote-exportavel',
+}: CartaoLoteProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const status = statusValidade(lote);
+  const logoSrc = logo || '/logo.png';
 
   useEffect(() => {
     const link = buildLink(lote.codigo);
@@ -27,19 +34,20 @@ export default function CartaoLote({ lote, logo, nomeConsultorio = 'FB Odonto' }
 
   return (
     <div
-      id="cartao-lote-exportavel"
-      className="w-[600px] bg-white text-[#505859] border border-[#E5DFDE] p-8 font-sans box-border"
+      id={exportId}
+      className="w-[600px] bg-white text-[#505859] border border-[#E5DFDE] py-[18px] px-8 font-sans box-border"
       style={{ backgroundColor: '#ffffff' }}
     >
-      <div className="flex items-center justify-between border-b border-[#EDE7E6] pb-6 mb-6">
-        <div className="flex items-center space-x-4">
-          {logo ? (
-            <img src={logo} alt="Logo" className="h-14 max-w-[160px] object-contain" />
-          ) : (
-            <div className="text-xl font-bold text-[#505859]">{nomeConsultorio}</div>
-          )}
+      <div className="flex items-center justify-between gap-4 border-b border-[#EDE7E6] pb-[13px] mb-[13px]">
+        <div className="flex items-center shrink-0">
+          <img src={logoSrc} alt={`Logo ${nomeConsultorio}`} className="h-[84px] max-w-[210px] object-contain" />
         </div>
-        <div className="text-right">
+        <div className="flex-1 min-w-0 text-center px-2">
+          <div className="text-base font-bold text-[#3E4546] leading-snug break-words">
+            {nomeConsultorio}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
           <div className="text-[11px] uppercase tracking-wider text-[#9E7372] font-semibold">
             Comprovante de Lote
           </div>
@@ -47,7 +55,7 @@ export default function CartaoLote({ lote, logo, nomeConsultorio = 'FB Odonto' }
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-3 gap-6 mb-[13px]">
         <div className="col-span-2 space-y-4">
           {lote.item?.trim() ? (
             <div>
@@ -108,8 +116,8 @@ export default function CartaoLote({ lote, logo, nomeConsultorio = 'FB Odonto' }
         </div>
       </div>
 
-      <div className="border-t border-[#EDE7E6] pt-4 text-center text-xs text-[#7A8283]">
-        Gerado pelo sistema de esterilização · {nomeConsultorio}
+      <div className="border-t border-[#EDE7E6] pt-[9px] text-center text-xs text-[#7A8283]">
+        Gerado pelo sistema de esterilização
       </div>
     </div>
   );

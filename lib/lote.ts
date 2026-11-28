@@ -58,11 +58,33 @@ export function proximoCodigo(prefixo: string, ultimo: string | null): string | 
   return prefixo + proximoSeq;
 }
 
+const DEFAULT_VERCEL_URL = 'https://fbodonto.vercel.app';
+
+function urlValidaNaoSupabase(url?: string | null): string | null {
+  if (!url) return null;
+  const limpa = url.trim().replace(/\/$/, '');
+  if (!limpa || limpa.includes('supabase.co') || limpa.includes('supabase.in')) {
+    return null;
+  }
+  return limpa;
+}
+
 export function getBaseUrl(): string {
   if (typeof window !== 'undefined') {
-    return process.env.NEXT_PUBLIC_BASE_URL || process.env.VITE_BASE_URL || window.location.origin;
+    if (window.location.hostname.endsWith('.vercel.app')) {
+      return window.location.origin;
+    }
+    const envBase =
+      urlValidaNaoSupabase(process.env.NEXT_PUBLIC_BASE_URL) ||
+      urlValidaNaoSupabase(process.env.VITE_BASE_URL);
+    if (envBase) return envBase;
+    return DEFAULT_VERCEL_URL;
   }
-  return process.env.NEXT_PUBLIC_BASE_URL || process.env.VITE_BASE_URL || 'https://fbodonto.vercel.app';
+  return (
+    urlValidaNaoSupabase(process.env.NEXT_PUBLIC_BASE_URL) ||
+    urlValidaNaoSupabase(process.env.VITE_BASE_URL) ||
+    DEFAULT_VERCEL_URL
+  );
 }
 
 export function buildLink(codigo: string): string {

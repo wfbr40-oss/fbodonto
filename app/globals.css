@@ -5,6 +5,11 @@
   --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
+html,
+body {
+  overscroll-behavior-y: contain;
+}
+
 @media print {
   body {
     background: white !important;
