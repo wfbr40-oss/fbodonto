@@ -919,16 +919,14 @@ export default function CadastroPage() {
         </aside>
 
         <main className="flex-1 min-w-0 max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 w-full">
-          <AnimatePresence mode="wait" initial={false} custom={direcaoAba}>
+          <AnimatePresence initial={false}>
             {abaAtiva === 'novo' && (
               <motion.div
                 key="aba-novo"
-                custom={direcaoAba}
-                variants={mainTabSlideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ duration: 0.18, ease: 'easeOut' }}
+                initial={{ opacity: 0, x: direcaoAba * 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -direcaoAba * 24 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
                 className="space-y-6 touch-pan-y overflow-x-hidden"
               >
                 <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit no-print">
@@ -1297,12 +1295,10 @@ export default function CadastroPage() {
             {abaAtiva === 'qrcode' && (
               <motion.div
                 key="aba-qrcode"
-                custom={direcaoAba}
-                variants={mainTabSlideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ duration: 0.18, ease: 'easeOut' }}
+                initial={{ opacity: 0, x: direcaoAba * 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -direcaoAba * 24 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
                 className="no-print touch-pan-y overflow-x-hidden"
               >
                 <LeitorQrCode
@@ -1320,12 +1316,10 @@ export default function CadastroPage() {
             {abaAtiva === 'config' && (
               <motion.div
                 key="aba-config"
-                custom={direcaoAba}
-                variants={mainTabSlideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ duration: 0.18, ease: 'easeOut' }}
+                initial={{ opacity: 0, x: direcaoAba * 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -direcaoAba * 24 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
                 className="max-w-2xl mx-auto space-y-6 no-print touch-pan-y overflow-x-hidden"
               >
                 <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit">
