@@ -53,6 +53,42 @@ type AbaPrincipal = 'novo' | 'qrcode' | 'config';
 type SubAbaLote = 'cadastro' | 'historico';
 type SubAbaConfig = 'geral' | 'usuarios';
 
+const ORDEM_ABAS: Record<AbaPrincipal, number> = {
+  novo: 0,
+  qrcode: 1,
+  config: 2,
+};
+
+const subTabSlideVariants = {
+  enter: (dir: number) => ({
+    opacity: 0,
+    x: dir > 0 ? 48 : -48,
+  }),
+  center: {
+    opacity: 1,
+    x: 0,
+  },
+  exit: (dir: number) => ({
+    opacity: 0,
+    x: dir > 0 ? -48 : 48,
+  }),
+};
+
+const mainTabSlideVariants = {
+  enter: (dir: number) => ({
+    opacity: 0,
+    y: dir > 0 ? 18 : -18,
+  }),
+  center: {
+    opacity: 1,
+    y: 0,
+  },
+  exit: (dir: number) => ({
+    opacity: 0,
+    y: dir > 0 ? -14 : 14,
+  }),
+};
+
 export default function CadastroPage() {
   const [autenticado, setAutenticado] = useState<boolean>(false);
   const [adminConfigured, setAdminConfigured] = useState<boolean>(true);
@@ -72,8 +108,13 @@ export default function CadastroPage() {
   const [configStorageMode, setConfigStorageMode] = useState<'supabase' | 'local'>('local');
   const [salvandoConfig, setSalvandoConfig] = useState<boolean>(false);
   const [abaAtiva, setAbaAtiva] = useState<AbaPrincipal>('novo');
+  const [direcaoAba, setDirecaoAba] = useState<1 | -1>(1);
   const [subAbaLote, setSubAbaLote] = useState<SubAbaLote>('cadastro');
+  const [direcaoSubLote, setDirecaoSubLote] = useState<1 | -1>(1);
+  const [dragSubLoteX, setDragSubLoteX] = useState<number>(0);
   const [subAbaConfig, setSubAbaConfig] = useState<SubAbaConfig>('geral');
+  const [direcaoSubConfig, setDirecaoSubConfig] = useState<1 | -1>(1);
+  const [dragSubConfigX, setDragSubConfigX] = useState<number>(0);
 
   const [sidebarDesktop, setSidebarDesktop] = useState<boolean>(true);
   const [sidebarMobile, setSidebarMobile] = useState<boolean>(false);
@@ -114,6 +155,7 @@ export default function CadastroPage() {
     y: number;
     time: number;
     ignorar: boolean;
+    bloqueadoDirecao?: 'h' | 'v';
   } | null>(null);
 
   const pref = prefixoDia(esterilizacao);
@@ -302,11 +344,32 @@ export default function CadastroPage() {
   };
 
   const selecionarAba = (aba: AbaPrincipal) => {
+    if (aba !== abaAtiva) {
+      setDirecaoAba(ORDEM_ABAS[aba] >= ORDEM_ABAS[abaAtiva] ? 1 : -1);
+    }
     setAbaAtiva(aba);
     if (aba !== 'novo') {
       setLoteCriado(null);
     }
+    setDragSubLoteX(0);
+    setDragSubConfigX(0);
     setSidebarMobile(false);
+  };
+
+  const mudarSubAbaLote = (novaSub: SubAbaLote) => {
+    if (novaSub !== subAbaLote) {
+      setDirecaoSubLote(novaSub === 'historico' ? 1 : -1);
+    }
+    setDragSubLoteX(0);
+    setSubAbaLote(novaSub);
+  };
+
+  const mudarSubAbaConfig = (novaSub: SubAbaConfig) => {
+    if (novaSub !== subAbaConfig) {
+      setDirecaoSubConfig(novaSub === 'usuarios' ? 1 : -1);
+    }
+    setDragSubConfigX(0);
+    setSubAbaConfig(novaSub);
   };
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -320,7 +383,12 @@ export default function CadastroPage() {
 
     if (alvo) {
       const tag = alvo.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        Boolean(alvo.closest('[role="dialog"], [aria-modal="true"], [data-no-swipe]'))
+      ) {
         ignorar = true;
       } else {
         let atual: HTMLElement | null = alvo;
@@ -346,9 +414,60 @@ export default function CadastroPage() {
     };
   };
 
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const inicio = touchSwipeRef.current;
+    if (!inicio || inicio.ignorar || loteModal || sidebarMobile || e.touches.length !== 1) {
+      return;
+    }
+
+    const toque = e.touches[0];
+    const deltaX = toque.clientX - inicio.x;
+    const deltaY = toque.clientY - inicio.y;
+
+    if (!inicio.bloqueadoDirecao && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+      inicio.bloqueadoDirecao = Math.abs(deltaX) > Math.abs(deltaY) * 1.15 ? 'h' : 'v';
+    }
+
+    if (inicio.bloqueadoDirecao !== 'h') {
+      return;
+    }
+
+    if (abaAtiva === 'novo') {
+      if (subAbaLote === 'cadastro') {
+        if (deltaX < 0) {
+          setDragSubLoteX(Math.max(-96, deltaX * 0.45));
+        } else {
+          setDragSubLoteX(Math.min(36, deltaX * 0.18));
+        }
+      } else if (subAbaLote === 'historico' && deltaX > 0) {
+        setDragSubLoteX(Math.min(96, deltaX * 0.45));
+      }
+    } else if (abaAtiva === 'config') {
+      if (subAbaConfig === 'geral') {
+        if (deltaX < 0) {
+          setDragSubConfigX(Math.max(-96, deltaX * 0.45));
+        } else {
+          setDragSubConfigX(Math.min(36, deltaX * 0.18));
+        }
+      } else if (subAbaConfig === 'usuarios' && deltaX > 0) {
+        setDragSubConfigX(Math.min(96, deltaX * 0.45));
+      }
+    }
+  };
+
+  const abrirMenuPorDeslize = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarMobile(true);
+    } else {
+      setSidebarDesktop(true);
+    }
+  };
+
   const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
     const inicio = touchSwipeRef.current;
     touchSwipeRef.current = null;
+    setDragSubLoteX(0);
+    setDragSubConfigX(0);
 
     if (!inicio || inicio.ignorar || loteModal || e.changedTouches.length !== 1) {
       return;
@@ -373,18 +492,40 @@ export default function CadastroPage() {
     if (abaAtiva === 'novo') {
       if (subAbaLote === 'cadastro') {
         if (deltaX < 0) {
-          setSubAbaLote('historico');
+          mudarSubAbaLote('historico');
         } else if (deltaX > 0) {
-          if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-            setSidebarMobile(true);
-          } else {
-            setSidebarDesktop(true);
-          }
+          abrirMenuPorDeslize();
         }
       } else if (subAbaLote === 'historico' && deltaX > 0) {
-        setSubAbaLote('cadastro');
+        mudarSubAbaLote('cadastro');
+      }
+      return;
+    }
+
+    if (abaAtiva === 'qrcode') {
+      if (deltaX > 0) {
+        abrirMenuPorDeslize();
+      }
+      return;
+    }
+
+    if (abaAtiva === 'config') {
+      if (subAbaConfig === 'geral') {
+        if (deltaX < 0) {
+          mudarSubAbaConfig('usuarios');
+        } else if (deltaX > 0) {
+          abrirMenuPorDeslize();
+        }
+      } else if (subAbaConfig === 'usuarios' && deltaX > 0) {
+        mudarSubAbaConfig('geral');
       }
     }
+  };
+
+  const handleTouchCancel = () => {
+    touchSwipeRef.current = null;
+    setDragSubLoteX(0);
+    setDragSubConfigX(0);
   };
 
   const handleSalvarConfig = async (e: React.FormEvent) => {
@@ -604,7 +745,9 @@ export default function CadastroPage() {
     <div
       className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col"
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
     >
       <header className="bg-[#FCFBFB] border-b border-[#E5DFDE] sticky top-0 z-30 no-print">
         <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
@@ -641,16 +784,23 @@ export default function CadastroPage() {
       </header>
 
       <div className="flex flex-1 relative">
-        {sidebarMobile && (
-          <div
-            onClick={() => setSidebarMobile(false)}
-            className="fixed inset-0 bg-[#3E4546]/35 z-40 lg:hidden no-print"
-            aria-hidden="true"
-          />
-        )}
+        <AnimatePresence>
+          {sidebarMobile && (
+            <motion.div
+              key="sidebar-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+              onClick={() => setSidebarMobile(false)}
+              className="fixed inset-0 bg-[#3E4546]/35 z-40 lg:hidden no-print"
+              aria-hidden="true"
+            />
+          )}
+        </AnimatePresence>
 
         <aside
-          className={`no-print fixed lg:sticky top-0 lg:top-16 left-0 z-50 lg:z-20 h-screen lg:h-[calc(100vh-4rem)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:pt-0 lg:pb-0 w-64 bg-[#FCFBFB] border-r border-[#E5DFDE] flex flex-col justify-between transition-transform duration-200 shrink-0 ${
+          className={`no-print fixed lg:sticky top-0 lg:top-16 left-0 z-50 lg:z-20 h-screen lg:h-[calc(100vh-4rem)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:pt-0 lg:pb-0 w-64 bg-[#FCFBFB] border-r border-[#E5DFDE] flex flex-col justify-between transition-transform duration-200 ease-out shrink-0 ${
             sidebarMobile ? 'translate-x-0' : '-translate-x-full'
           } ${sidebarDesktop ? 'lg:translate-x-0 lg:flex' : 'lg:-translate-x-full lg:hidden'}`}
         >
@@ -671,52 +821,73 @@ export default function CadastroPage() {
               <button
                 type="button"
                 onClick={() => selecionarAba('novo')}
-                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap border ${
+                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-colors cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'novo'
-                    ? 'bg-[#CDA9A8]/22 text-[#3E4546] border-[#CDA9A8]/50'
-                    : 'border-transparent text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
+                    ? 'text-[#3E4546]'
+                    : 'text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
                 }`}
               >
+                {abaAtiva === 'novo' && (
+                  <motion.span
+                    layoutId="sidebar-nav-pill"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                    className="absolute inset-0 bg-[#CDA9A8]/22 border border-[#CDA9A8]/50 rounded-lg"
+                  />
+                )}
                 <PlusCircle
-                  className={`w-4 h-4 shrink-0 ${
+                  className={`relative z-10 w-4 h-4 shrink-0 transition-colors ${
                     abaAtiva === 'novo' ? 'text-[#9E7372]' : 'text-[#7A8283]'
                   }`}
                 />
-                <span>Cadastrar Lote</span>
+                <span className="relative z-10">Cadastrar Lote</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => selecionarAba('qrcode')}
-                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap border ${
+                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-colors cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'qrcode'
-                    ? 'bg-[#CDA9A8]/22 text-[#3E4546] border-[#CDA9A8]/50'
-                    : 'border-transparent text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
+                    ? 'text-[#3E4546]'
+                    : 'text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
                 }`}
               >
+                {abaAtiva === 'qrcode' && (
+                  <motion.span
+                    layoutId="sidebar-nav-pill"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                    className="absolute inset-0 bg-[#CDA9A8]/22 border border-[#CDA9A8]/50 rounded-lg"
+                  />
+                )}
                 <ScanLine
-                  className={`w-4 h-4 shrink-0 ${
+                  className={`relative z-10 w-4 h-4 shrink-0 transition-colors ${
                     abaAtiva === 'qrcode' ? 'text-[#9E7372]' : 'text-[#7A8283]'
                   }`}
                 />
-                <span>Ler QR Code</span>
+                <span className="relative z-10">Ler QR Code</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => selecionarAba('config')}
-                className={`w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition cursor-pointer whitespace-nowrap border ${
+                className={`relative w-full px-3.5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-3 transition-colors cursor-pointer whitespace-nowrap ${
                   abaAtiva === 'config'
-                    ? 'bg-[#CDA9A8]/22 text-[#3E4546] border-[#CDA9A8]/50'
-                    : 'border-transparent text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
+                    ? 'text-[#3E4546]'
+                    : 'text-[#505859] hover:bg-[#F4EFEF] hover:text-[#3E4546]'
                 }`}
               >
+                {abaAtiva === 'config' && (
+                  <motion.span
+                    layoutId="sidebar-nav-pill"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                    className="absolute inset-0 bg-[#CDA9A8]/22 border border-[#CDA9A8]/50 rounded-lg"
+                  />
+                )}
                 <Settings
-                  className={`w-4 h-4 shrink-0 ${
+                  className={`relative z-10 w-4 h-4 shrink-0 transition-colors ${
                     abaAtiva === 'config' ? 'text-[#9E7372]' : 'text-[#7A8283]'
                   }`}
                 />
-                <span>Configurações</span>
+                <span className="relative z-10">Configurações</span>
               </button>
             </nav>
           </div>
@@ -748,42 +919,77 @@ export default function CadastroPage() {
         </aside>
 
         <main className="flex-1 min-w-0 max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 w-full">
-          {abaAtiva === 'novo' && (
-            <div className="space-y-6 touch-pan-y overflow-x-hidden">
-              <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit no-print">
-                <button
-                  type="button"
-                  onClick={() => setSubAbaLote('cadastro')}
-                  className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer whitespace-nowrap ${
-                    subAbaLote === 'cadastro'
-                      ? 'bg-[#FCFBFB] text-[#3E4546] shadow-xs'
-                      : 'text-[#6E7677] hover:text-[#3E4546]'
-                  }`}
-                >
-                  Novo Lote
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSubAbaLote('historico')}
-                  className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer whitespace-nowrap ${
-                    subAbaLote === 'historico'
-                      ? 'bg-[#FCFBFB] text-[#3E4546] shadow-xs'
-                      : 'text-[#6E7677] hover:text-[#3E4546]'
-                  }`}
-                >
-                  Histórico de Lotes ({historico.length})
-                </button>
-              </div>
+          <AnimatePresence mode="wait" initial={false} custom={direcaoAba}>
+            {abaAtiva === 'novo' && (
+              <motion.div
+                key="aba-novo"
+                custom={direcaoAba}
+                variants={mainTabSlideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="space-y-6 touch-pan-y overflow-x-hidden"
+              >
+                <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit no-print">
+                  <button
+                    type="button"
+                    onClick={() => mudarSubAbaLote('cadastro')}
+                    className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                      subAbaLote === 'cadastro'
+                        ? 'text-[#3E4546]'
+                        : 'text-[#6E7677] hover:text-[#3E4546]'
+                    }`}
+                  >
+                    {subAbaLote === 'cadastro' && (
+                      <motion.span
+                        layoutId="subtab-lote-pill"
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                        className="absolute inset-0 bg-[#FCFBFB] rounded-md shadow-xs"
+                      />
+                    )}
+                    <span className="relative z-10">Novo Lote</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => mudarSubAbaLote('historico')}
+                    className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                      subAbaLote === 'historico'
+                        ? 'text-[#3E4546]'
+                        : 'text-[#6E7677] hover:text-[#3E4546]'
+                    }`}
+                  >
+                    {subAbaLote === 'historico' && (
+                      <motion.span
+                        layoutId="subtab-lote-pill"
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                        className="absolute inset-0 bg-[#FCFBFB] rounded-md shadow-xs"
+                      />
+                    )}
+                    <span className="relative z-10">Histórico de Lotes ({historico.length})</span>
+                  </button>
+                </div>
 
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={subAbaLote}
-                  initial={{ opacity: 0, x: subAbaLote === 'historico' ? 28 : -28 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: subAbaLote === 'historico' ? -28 : 28 }}
-                  transition={{ duration: 0.16, ease: 'easeOut' }}
+                <div
+                  className="relative"
+                  style={{
+                    transform: dragSubLoteX ? `translateX(${dragSubLoteX}px)` : undefined,
+                    transition: dragSubLoteX
+                      ? 'none'
+                      : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
+                  }}
                 >
-                  {subAbaLote === 'cadastro' ? (
+                  <AnimatePresence mode="popLayout" initial={false} custom={direcaoSubLote}>
+                    <motion.div
+                      key={subAbaLote}
+                      custom={direcaoSubLote}
+                      variants={subTabSlideVariants}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      {subAbaLote === 'cadastro' ? (
                 <div className={loteCriado ? 'grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6' : 'max-w-3xl mx-auto'}>
                   <div
                     className={`${
@@ -1005,7 +1211,7 @@ export default function CadastroPage() {
                                 onClick={() => {
                                   setLoteCriado(l);
                                   setQuantidade(1);
-                                  setSubAbaLote('cadastro');
+                                  mudarSubAbaLote('cadastro');
                                   window.scrollTo({ top: 0, behavior: 'smooth' });
                                 }}
                                 className="py-2 px-3 bg-[#F4ECEC] hover:bg-[#EBDDDD] text-[#505859] border border-[#E3D3D2] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
@@ -1056,7 +1262,7 @@ export default function CadastroPage() {
                                     onClick={() => {
                                       setLoteCriado(l);
                                       setQuantidade(1);
-                                      setSubAbaLote('cadastro');
+                                      mudarSubAbaLote('cadastro');
                                       window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     className="px-2.5 py-1 bg-[#F4ECEC] hover:bg-[#EBDDDD] text-[#505859] border border-[#E3D3D2] text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
@@ -1082,54 +1288,106 @@ export default function CadastroPage() {
                   )}
                 </div>
               )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          )}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+            )}
 
-          {abaAtiva === 'qrcode' && (
-            <div className="no-print">
-              <LeitorQrCode
-                nomeConsultorio={config.nomeConsultorio}
-                onReimprimir={(lote) => {
-                  setLoteCriado(lote);
-                  setQuantidade(1);
-                  setAbaAtiva('novo');
-                  setSubAbaLote('cadastro');
-                }}
-              />
-            </div>
-          )}
+            {abaAtiva === 'qrcode' && (
+              <motion.div
+                key="aba-qrcode"
+                custom={direcaoAba}
+                variants={mainTabSlideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="no-print touch-pan-y overflow-x-hidden"
+              >
+                <LeitorQrCode
+                  nomeConsultorio={config.nomeConsultorio}
+                  onReimprimir={(lote) => {
+                    setLoteCriado(lote);
+                    setQuantidade(1);
+                    setSubAbaLote('cadastro');
+                    selecionarAba('novo');
+                  }}
+                />
+              </motion.div>
+            )}
 
-          {abaAtiva === 'config' && (
-            <div className="max-w-2xl mx-auto space-y-6 no-print">
-              <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit">
-                <button
-                  type="button"
-                  onClick={() => setSubAbaConfig('geral')}
-                  className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer whitespace-nowrap ${
-                    subAbaConfig === 'geral'
-                      ? 'bg-[#FCFBFB] text-[#3E4546] shadow-xs'
-                      : 'text-[#6E7677] hover:text-[#3E4546]'
-                  }`}
+            {abaAtiva === 'config' && (
+              <motion.div
+                key="aba-config"
+                custom={direcaoAba}
+                variants={mainTabSlideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="max-w-2xl mx-auto space-y-6 no-print touch-pan-y overflow-x-hidden"
+              >
+                <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit">
+                  <button
+                    type="button"
+                    onClick={() => mudarSubAbaConfig('geral')}
+                    className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                      subAbaConfig === 'geral'
+                        ? 'text-[#3E4546]'
+                        : 'text-[#6E7677] hover:text-[#3E4546]'
+                    }`}
+                  >
+                    {subAbaConfig === 'geral' && (
+                      <motion.span
+                        layoutId="subtab-config-pill"
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                        className="absolute inset-0 bg-[#FCFBFB] rounded-md shadow-xs"
+                      />
+                    )}
+                    <span className="relative z-10">Consultório e Etiquetas</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => mudarSubAbaConfig('usuarios')}
+                    className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                      subAbaConfig === 'usuarios'
+                        ? 'text-[#3E4546]'
+                        : 'text-[#6E7677] hover:text-[#3E4546]'
+                    }`}
+                  >
+                    {subAbaConfig === 'usuarios' && (
+                      <motion.span
+                        layoutId="subtab-config-pill"
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                        className="absolute inset-0 bg-[#FCFBFB] rounded-md shadow-xs"
+                      />
+                    )}
+                    <UserPlus className="relative z-10 w-3.5 h-3.5 text-[#9E7372]" />
+                    <span className="relative z-10">Cadastrar Usuário</span>
+                  </button>
+                </div>
+
+                <div
+                  className="relative"
+                  style={{
+                    transform: dragSubConfigX ? `translateX(${dragSubConfigX}px)` : undefined,
+                    transition: dragSubConfigX
+                      ? 'none'
+                      : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
+                  }}
                 >
-                  Consultório e Etiquetas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSubAbaConfig('usuarios')}
-                  className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                    subAbaConfig === 'usuarios'
-                      ? 'bg-[#FCFBFB] text-[#3E4546] shadow-xs'
-                      : 'text-[#6E7677] hover:text-[#3E4546]'
-                  }`}
-                >
-                  <UserPlus className="w-3.5 h-3.5 text-[#9E7372]" />
-                  <span>Cadastrar Usuário</span>
-                </button>
-              </div>
-
-              {subAbaConfig === 'geral' ? (
+                  <AnimatePresence mode="popLayout" initial={false} custom={direcaoSubConfig}>
+                    <motion.div
+                      key={subAbaConfig}
+                      custom={direcaoSubConfig}
+                      variants={subTabSlideVariants}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      {subAbaConfig === 'geral' ? (
                 <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6">
                   <h2 className="text-base sm:text-lg font-bold text-[#3E4546] mb-4 pb-3 border-b border-[#EDE7E6]">
                     Configurações de Impressão e Consultório
@@ -1366,8 +1624,12 @@ export default function CadastroPage() {
                   )}
                 </div>
               )}
-            </div>
-          )}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {loteCriado && (
             <div className="hidden print:block">

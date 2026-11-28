@@ -98,6 +98,8 @@ export default function ModalCartaoLote({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
       className="fixed inset-0 z-50 bg-[#3E4546]/55 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-6 overflow-y-auto no-print"
       onClick={onClose}
     >
