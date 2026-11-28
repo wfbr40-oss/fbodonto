@@ -14,6 +14,7 @@ import {
   codigoPorTurno,
 } from '@/lib/lote';
 import {
+  CargoUsuario,
   criarLote,
   listarRecentes,
   login,
@@ -21,6 +22,8 @@ import {
   obterSessaoUsuario,
   configurarAdminInicial,
   cadastrarUsuario,
+  atualizarUsuario,
+  excluirUsuario,
   listarUsuarios,
   carregarConfigNuvem,
   salvarConfigNuvem,
@@ -47,6 +50,12 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
+  Pencil,
+  Trash2,
+  Shield,
+  ExternalLink,
+  Check,
+  ArrowLeft,
 } from 'lucide-react';
 
 type AbaPrincipal = 'novo' | 'qrcode' | 'config';
@@ -91,11 +100,21 @@ const mainTabSlideVariants: Variants = {
   }),
 };
 
+const LABEL_CARGO: Record<CargoUsuario, string> = {
+  administrador: 'Administrador',
+  usuario: 'Usuário',
+  cliente: 'Cliente',
+};
+
 export default function CadastroPage() {
   const [autenticado, setAutenticado] = useState<boolean>(false);
   const [adminConfigured, setAdminConfigured] = useState<boolean>(true);
   const [usuarioConectado, setUsuarioConectado] = useState<string>('');
+  const [usuarioLoginAtual, setUsuarioLoginAtual] = useState<string>('');
+  const [cargoUsuario, setCargoUsuario] = useState<CargoUsuario>('usuario');
   const [carregandoAuth, setCarregandoAuth] = useState<boolean>(true);
+  const [popupClienteAberto, setPopupClienteAberto] = useState<boolean>(false);
+  const [modoClienteVisitante, setModoClienteVisitante] = useState<boolean>(false);
 
   const [usuario, setUsuario] = useState(() => {
     if (typeof window === 'undefined') return '';
@@ -153,19 +172,36 @@ export default function CadastroPage() {
   const [carregandoHistorico, setCarregandoHistorico] = useState<boolean>(false);
 
   const [loteCriado, setLoteCriado] = useState<Lote | null>(null);
+  const [popupImpressaoAberto, setPopupImpressaoAberto] = useState<boolean>(false);
+  const [origemImpressao, setOrigemImpressao] = useState<'cadastro' | 'reimpressao'>('cadastro');
   const [loteModal, setLoteModal] = useState<Lote | null>(null);
   const [salvando, setSalvando] = useState<boolean>(false);
 
-  // Cadastro de usuário (Configurações -> Cadastrar Usuário)
+  // Cadastro e gerenciamento de usuários (Configurações -> Usuários)
   const [novoUsuario, setNovoUsuario] = useState('');
   const [novoNome, setNovoNome] = useState('');
+  const [novoCargo, setNovoCargo] = useState<CargoUsuario>('usuario');
   const [novaSenha, setNovaSenha] = useState('1234');
   const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false);
   const [cadastrandoUsuario, setCadastrandoUsuario] = useState(false);
   const [usuariosLista, setUsuariosLista] = useState<UsuarioRegistrado[]>([]);
   const [userStorageMode, setUserStorageMode] = useState<'supabase' | 'local'>('local');
 
+  const [usuarioEditando, setUsuarioEditando] = useState<string | null>(null);
+  const [editLogin, setEditLogin] = useState('');
+  const [editNome, setEditNome] = useState('');
+  const [editCargo, setEditCargo] = useState<CargoUsuario>('usuario');
+  const [editNovaSenha, setEditNovaSenha] = useState('');
+  const [mostrarEditSenha, setMostrarEditSenha] = useState(false);
+  const [salvandoEdicaoUsuario, setSalvandoEdicaoUsuario] = useState(false);
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState<string | null>(null);
+  const [excluindoUsuario, setExcluindoUsuario] = useState<string | null>(null);
+
+  const ehAdmin = cargoUsuario === 'administrador';
+  const ehCliente = cargoUsuario === 'cliente';
+
   const { mostrarPopup } = useToast();
+  const autenticadoRef = useRef(false);
   const instrucoesMostradasRef = useRef(false);
   const avisoLocalMostradoRef = useRef(false);
   const avisoSetupMostradoRef = useRef(false);
@@ -208,32 +244,67 @@ export default function CadastroPage() {
 
   const sincronizarSessao = useCallback(
     async (silencioso = false) => {
+      const estavaAutenticado = autenticadoRef.current;
       const {
         autenticado: ok,
         usuario: nome,
         usuarioLogin,
+        role,
         adminConfigured: configured,
         storageMode,
       } = await obterSessaoUsuario();
+
+      autenticadoRef.current = ok;
       setAutenticado(ok);
       setAdminConfigured(configured);
       setUserStorageMode(storageMode);
       setUsuarioConectado(nome || '');
+      setUsuarioLoginAtual(usuarioLogin || '');
+      const cargoAtual: CargoUsuario = role || 'usuario';
+      setCargoUsuario(cargoAtual);
+
       if (ok && usuarioLogin) {
+        setModoClienteVisitante(false);
+        setPopupClienteAberto(false);
         try {
           localStorage.setItem('fbodonto_ultimo_usuario', usuarioLogin);
         } catch {}
+      } else if (!ok && estavaAutenticado) {
+        setLoteModal(null);
+        setPopupImpressaoAberto(false);
+        setLoteCriado(null);
+        setSidebarMobile(false);
+        setPopupClienteAberto(false);
+        setUsuariosLista([]);
+        mostrarPopup({
+          tipo: 'aviso',
+          duracaoMs: 5000,
+          mensagem: 'Seu acesso foi desconectado.',
+        });
       }
+
       if (!silencioso) {
         setCarregandoAuth(false);
       }
+
       if (ok) {
-        carregarDadosHistorico();
-        carregarUsuarios();
+        if (cargoAtual !== 'cliente') {
+          carregarDadosHistorico();
+        }
+        if (cargoAtual === 'administrador') {
+          carregarUsuarios();
+        } else {
+          setUsuariosLista([]);
+          setSubAbaConfig('geral');
+        }
       }
     },
-    [carregarDadosHistorico, carregarUsuarios]
+    [carregarDadosHistorico, carregarUsuarios, mostrarPopup]
   );
+
+  useEffect(() => {
+    autenticadoRef.current = autenticado;
+  }, [autenticado]);
 
   useEffect(() => {
     let ativo = true;
@@ -254,25 +325,39 @@ export default function CadastroPage() {
     Promise.all([obterSessaoUsuario(), tempoMinimoSplash])
       .then(([sessao]) => {
         if (!ativo) return;
+        const cargoAtual: CargoUsuario = sessao.role || 'usuario';
+        autenticadoRef.current = sessao.autenticado;
         setAutenticado(sessao.autenticado);
         setAdminConfigured(sessao.adminConfigured);
         setUserStorageMode(sessao.storageMode);
         setUsuarioConectado(sessao.usuario || '');
+        setUsuarioLoginAtual(sessao.usuarioLogin || '');
+        setCargoUsuario(cargoAtual);
+
         if (sessao.autenticado && sessao.usuarioLogin) {
+          setPopupClienteAberto(false);
+          setModoClienteVisitante(false);
           try {
             localStorage.setItem('fbodonto_ultimo_usuario', sessao.usuarioLogin);
           } catch {}
+        } else if (!sessao.autenticado && sessao.adminConfigured) {
+          setPopupClienteAberto(true);
         }
+
         if (sessao.autenticado) {
-          void listarRecentes().then((rec) => {
-            if (ativo) setHistorico(rec);
-          });
-          void listarUsuarios().then(({ usuarios, storageMode }) => {
-            if (ativo) {
-              setUsuariosLista(usuarios);
-              setUserStorageMode(storageMode);
-            }
-          });
+          if (cargoAtual !== 'cliente') {
+            void listarRecentes().then((rec) => {
+              if (ativo) setHistorico(rec);
+            });
+          }
+          if (cargoAtual === 'administrador') {
+            void listarUsuarios().then(({ usuarios, storageMode }) => {
+              if (ativo) {
+                setUsuariosLista(usuarios);
+                setUserStorageMode(storageMode);
+              }
+            });
+          }
         }
       })
       .finally(() => {
@@ -297,11 +382,41 @@ export default function CadastroPage() {
     };
     document.addEventListener('visibilitychange', aoRetornarAoApp);
     window.addEventListener('pageshow', aoReexibirPagina);
+
+    const intervalId = setInterval(() => {
+      if (autenticadoRef.current && document.visibilityState === 'visible') {
+        void sincronizarSessao(true);
+      }
+    }, 20000);
+
     return () => {
       document.removeEventListener('visibilitychange', aoRetornarAoApp);
       window.removeEventListener('pageshow', aoReexibirPagina);
+      clearInterval(intervalId);
     };
   }, [sincronizarSessao]);
+
+  useEffect(() => {
+    if (!popupClienteAberto) return;
+    const aoPressionarEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPopupClienteAberto(false);
+      }
+    };
+    window.addEventListener('keydown', aoPressionarEsc);
+    return () => window.removeEventListener('keydown', aoPressionarEsc);
+  }, [popupClienteAberto]);
+
+  useEffect(() => {
+    if (!popupImpressaoAberto) return;
+    const aoPressionarEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loteModal) {
+        setPopupImpressaoAberto(false);
+      }
+    };
+    window.addEventListener('keydown', aoPressionarEsc);
+    return () => window.removeEventListener('keydown', aoPressionarEsc);
+  }, [popupImpressaoAberto, loteModal]);
 
   useEffect(() => {
     if (carregandoAuth) return;
@@ -331,7 +446,7 @@ export default function CadastroPage() {
   }, [carregandoAuth, autenticado, adminConfigured, mostrarPopup]);
 
   useEffect(() => {
-    if (!autenticado || !configPronta || instrucoesMostradasRef.current) return;
+    if (!autenticado || ehCliente || !configPronta || instrucoesMostradasRef.current) return;
     try {
       const jaViu = localStorage.getItem('fbodonto_instrucoes_impressao_vistas');
       if (!jaViu) {
@@ -352,10 +467,10 @@ export default function CadastroPage() {
     } catch {
       // ignora erro de localStorage
     }
-  }, [autenticado, configPronta, config.larguraMm, config.alturaMm, mostrarPopup]);
+  }, [autenticado, ehCliente, configPronta, config.larguraMm, config.alturaMm, mostrarPopup]);
 
   useEffect(() => {
-    if (!autenticado || abaAtiva !== 'config' || !isSupabaseConfigured) return;
+    if (!autenticado || ehCliente || abaAtiva !== 'config' || !isSupabaseConfigured) return;
 
     if (
       subAbaConfig === 'geral' &&
@@ -375,6 +490,7 @@ export default function CadastroPage() {
     }
 
     if (
+      ehAdmin &&
       subAbaConfig === 'usuarios' &&
       userStorageMode === 'local' &&
       !avisoTabelaUsersMostradoRef.current
@@ -391,6 +507,8 @@ export default function CadastroPage() {
     }
   }, [
     autenticado,
+    ehCliente,
+    ehAdmin,
     abaAtiva,
     subAbaConfig,
     configPronta,
@@ -402,13 +520,18 @@ export default function CadastroPage() {
   const handleSetupAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const nome = await configurarAdminInicial(setupUsuario, setupSenha);
+      const res = await configurarAdminInicial(setupUsuario, setupSenha);
       try {
-        localStorage.setItem('fbodonto_ultimo_usuario', setupUsuario.trim().toLowerCase());
+        localStorage.setItem('fbodonto_ultimo_usuario', res.usuarioLogin);
       } catch {}
+      autenticadoRef.current = true;
       setAdminConfigured(true);
       setAutenticado(true);
-      setUsuarioConectado(nome);
+      setUsuarioConectado(res.usuario);
+      setUsuarioLoginAtual(res.usuarioLogin);
+      setCargoUsuario(res.role);
+      setPopupClienteAberto(false);
+      setModoClienteVisitante(false);
       setSetupSenha('');
       carregarDadosHistorico();
       carregarUsuarios();
@@ -421,15 +544,27 @@ export default function CadastroPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const nome = await login(usuario, senha);
+      const res = await login(usuario, senha);
       try {
-        localStorage.setItem('fbodonto_ultimo_usuario', usuario.trim().toLowerCase());
+        localStorage.setItem('fbodonto_ultimo_usuario', res.usuarioLogin);
       } catch {}
+      autenticadoRef.current = true;
       setAutenticado(true);
-      setUsuarioConectado(nome);
+      setUsuarioConectado(res.usuario);
+      setUsuarioLoginAtual(res.usuarioLogin);
+      setCargoUsuario(res.role);
+      setPopupClienteAberto(false);
+      setModoClienteVisitante(false);
       setSenha('');
-      carregarDadosHistorico();
-      carregarUsuarios();
+      if (res.role !== 'cliente') {
+        carregarDadosHistorico();
+      }
+      if (res.role === 'administrador') {
+        carregarUsuarios();
+      } else {
+        setUsuariosLista([]);
+        setSubAbaConfig('geral');
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao autenticar';
       mostrarPopup({ tipo: 'erro', mensagem: msg });
@@ -451,10 +586,17 @@ export default function CadastroPage() {
     }
     fecharMenuAposTransicaoRef.current = false;
     await logout();
+    autenticadoRef.current = false;
     setAutenticado(false);
     setUsuarioConectado('');
+    setUsuarioLoginAtual('');
+    setCargoUsuario('usuario');
+    setUsuariosLista([]);
     setSenha('');
     setSidebarMobile(false);
+    setPopupClienteAberto(false);
+    setPopupImpressaoAberto(false);
+    setModoClienteVisitante(false);
   };
 
   const handleToggleMenu = () => {
@@ -493,7 +635,7 @@ export default function CadastroPage() {
       localStorage.setItem('fbodonto_aba_ativa', aba);
     } catch {}
     if (aba !== 'novo') {
-      setLoteCriado(null);
+      setPopupImpressaoAberto(false);
     }
     setDragMainY(0);
     setDragSubLoteX(0);
@@ -519,6 +661,7 @@ export default function CadastroPage() {
   };
 
   const mudarSubAbaConfig = (novaSub: SubAbaConfig) => {
+    if (novaSub === 'usuarios' && !ehAdmin) return;
     if (novaSub !== subAbaConfig) {
       setDirecaoSubConfig(novaSub === 'usuarios' ? 1 : -1);
     }
@@ -557,7 +700,7 @@ export default function CadastroPage() {
   };
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length !== 1 || loteModal) {
+    if (e.touches.length !== 1 || loteModal || popupImpressaoAberto) {
       touchSwipeRef.current = null;
       return;
     }
@@ -598,7 +741,7 @@ export default function CadastroPage() {
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     const inicio = touchSwipeRef.current;
-    if (!inicio || inicio.ignorar || loteModal || sidebarMobile || e.touches.length !== 1) {
+    if (!inicio || inicio.ignorar || ehCliente || loteModal || sidebarMobile || e.touches.length !== 1) {
       return;
     }
 
@@ -625,9 +768,9 @@ export default function CadastroPage() {
         }
       } else if (abaAtiva === 'config') {
         if (subAbaConfig === 'geral') {
-          if (deltaX < 0) {
+          if (deltaX < 0 && ehAdmin) {
             setDragSubConfigX(Math.max(-96, deltaX * 0.45));
-          } else {
+          } else if (deltaX > 0) {
             setDragSubConfigX(Math.min(36, deltaX * 0.18));
           }
         } else if (subAbaConfig === 'usuarios' && deltaX > 0) {
@@ -667,6 +810,7 @@ export default function CadastroPage() {
   };
 
   const abrirMenuPorDeslize = () => {
+    if (ehCliente) return;
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setSidebarMobile(true);
     } else {
@@ -681,7 +825,7 @@ export default function CadastroPage() {
     setDragSubLoteX(0);
     setDragSubConfigX(0);
 
-    if (!inicio || inicio.ignorar || loteModal || e.changedTouches.length !== 1) {
+    if (!inicio || inicio.ignorar || ehCliente || loteModal || popupImpressaoAberto || e.changedTouches.length !== 1) {
       return;
     }
 
@@ -730,7 +874,7 @@ export default function CadastroPage() {
 
       if (abaAtiva === 'config') {
         if (subAbaConfig === 'geral') {
-          if (deltaX < 0) {
+          if (deltaX < 0 && ehAdmin) {
             desfocarCampoAtivo();
             mudarSubAbaConfig('usuarios');
           } else if (deltaX > 0) {
@@ -784,9 +928,19 @@ export default function CadastroPage() {
     e.preventDefault();
     setSalvandoConfig(true);
     try {
-      const parsedDias = parseInt(diasValidadeConfigInput, 10);
-      const diasSanitizado = isNaN(parsedDias) || parsedDias < 1 ? 1 : Math.min(365, parsedDias);
-      const configParaSalvar = { ...config, diasValidade: diasSanitizado };
+      let configParaSalvar: Config;
+      if (ehAdmin) {
+        const parsedDias = parseInt(diasValidadeConfigInput, 10);
+        const diasSanitizado = isNaN(parsedDias) || parsedDias < 1 ? 1 : Math.min(365, parsedDias);
+        configParaSalvar = { ...config, diasValidade: diasSanitizado };
+      } else {
+        const { config: baseAtual } = await carregarConfigNuvem();
+        configParaSalvar = {
+          ...baseAtual,
+          larguraMm: config.larguraMm,
+          alturaMm: config.alturaMm,
+        };
+      }
       const { config: salva, storageMode } = await salvarConfigNuvem(configParaSalvar);
       setConfig(salva);
       setDiasValidadeConfigInput(String(salva.diasValidade));
@@ -818,6 +972,7 @@ export default function CadastroPage() {
         usuario: novoUsuario,
         nome: novoNome,
         senha: novaSenha,
+        role: novoCargo,
       });
 
       const { usuarios, storageMode } = await listarUsuarios();
@@ -825,18 +980,108 @@ export default function CadastroPage() {
       setUserStorageMode(storageMode);
       setNovoUsuario('');
       setNovoNome('');
+      setNovoCargo('usuario');
       setNovaSenha('1234');
 
       mostrarPopup({
         tipo: 'sucesso',
         duracaoMs: 5000,
-        mensagem: `Usuário "${res.usuario.usuario}" cadastrado com sucesso!`,
+        mensagem: `Usuário "${res.usuario.usuario}" (${LABEL_CARGO[res.usuario.role]}) cadastrado com sucesso!`,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao cadastrar usuário.';
       mostrarPopup({ tipo: 'erro', mensagem: msg });
     } finally {
       setCadastrandoUsuario(false);
+    }
+  };
+
+  const iniciarEdicaoUsuario = (u: UsuarioRegistrado) => {
+    setConfirmandoExclusao(null);
+    setUsuarioEditando(u.usuario);
+    setEditLogin(u.usuario);
+    setEditNome(u.nome);
+    setEditCargo(u.role);
+    setEditNovaSenha('');
+    setMostrarEditSenha(false);
+  };
+
+  const cancelarEdicaoUsuario = () => {
+    setUsuarioEditando(null);
+    setEditLogin('');
+    setEditNome('');
+    setEditCargo('usuario');
+    setEditNovaSenha('');
+    setMostrarEditSenha(false);
+  };
+
+  const handleSalvarEdicaoUsuario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!usuarioEditando) return;
+    setSalvandoEdicaoUsuario(true);
+
+    try {
+      const res = await atualizarUsuario({
+        usuarioAtual: usuarioEditando,
+        novoUsuario: editLogin,
+        nome: editNome,
+        role: editCargo,
+        novaSenha: editNovaSenha.trim() || undefined,
+      });
+
+      const editouPropriaConta = usuarioEditando === usuarioLoginAtual;
+      cancelarEdicaoUsuario();
+      await carregarUsuarios();
+
+      if (editouPropriaConta && res.credentialsChanged) {
+        mostrarPopup({
+          tipo: 'aviso',
+          duracaoMs: 5000,
+          mensagem: 'Suas credenciais foram alteradas. Faça login novamente com os novos dados.',
+        });
+        await sincronizarSessao(true);
+        return;
+      }
+
+      if (editouPropriaConta) {
+        setUsuarioConectado(res.usuario.nome);
+        setUsuarioLoginAtual(res.usuario.usuario);
+      }
+
+      mostrarPopup({
+        tipo: 'sucesso',
+        duracaoMs: 5000,
+        mensagem: res.credentialsChanged
+          ? `Acesso de "${res.usuario.usuario}" atualizado. Sessões anteriores foram desconectadas.`
+          : `Dados de "${res.usuario.usuario}" atualizados com sucesso.`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao atualizar usuário.';
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
+    } finally {
+      setSalvandoEdicaoUsuario(false);
+    }
+  };
+
+  const handleExcluirUsuario = async (usuarioAlvo: string) => {
+    setExcluindoUsuario(usuarioAlvo);
+    try {
+      await excluirUsuario(usuarioAlvo);
+      if (usuarioEditando === usuarioAlvo) {
+        cancelarEdicaoUsuario();
+      }
+      setConfirmandoExclusao(null);
+      await carregarUsuarios();
+      mostrarPopup({
+        tipo: 'sucesso',
+        duracaoMs: 5000,
+        mensagem: `Login "${usuarioAlvo}" excluído e desconectado do sistema.`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir login.';
+      mostrarPopup({ tipo: 'erro', mensagem: msg });
+    } finally {
+      setExcluindoUsuario(null);
     }
   };
 
@@ -878,6 +1123,8 @@ export default function CadastroPage() {
         }
       );
       setLoteCriado(novo);
+      setOrigemImpressao('cadastro');
+      setPopupImpressaoAberto(true);
       await carregarDadosHistorico();
       setItem('');
       mostrarPopup({
@@ -924,110 +1171,303 @@ export default function CadastroPage() {
           </div>
         </motion.div>
       ) : !autenticado ? (
-        <motion.main
-          key="tela-login"
-          initial={{ opacity: 0, y: 12, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -10, scale: 0.985 }}
-          transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-          className="min-h-[100dvh] bg-[#F6F4F3] flex items-center justify-center p-4 sm:p-6"
-        >
-          <div className="max-w-md w-full bg-[#FCFBFB] rounded-2xl border border-[#E5DFDE] shadow-sm p-8">
-            <div className="text-center mb-7 pb-6 border-b border-[#EDE7E6]">
-              <div className="flex justify-center mb-4">
-                <Image
-                  src="/logo.png"
-                  alt="Logo FB Odonto"
-                  width={130}
-                  height={130}
-                  priority
-                  referrerPolicy="no-referrer"
-                  className="w-[130px] h-[130px] object-contain"
-                />
-              </div>
-              <h1 className="text-2xl font-bold text-[#3E4546] tracking-tight">{config.nomeConsultorio}</h1>
-              <p className="text-sm text-[#7A8283] mt-1">Controle e Rastreabilidade de Esterilização</p>
-            </div>
-
-            {!adminConfigured ? (
-              <form onSubmit={handleSetupAdmin} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#505859] mb-1.5">
-                    Usuário Administrador
-                  </label>
-                  <input
-                    type="text"
-                    value={setupUsuario}
-                    onChange={(e) => setSetupUsuario(e.target.value)}
-                    required
-                    className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#505859] mb-1.5">
-                    Senha Inicial
-                  </label>
-                  <input
-                    type="password"
-                    value={setupSenha}
-                    onChange={(e) => setSetupSenha(e.target.value)}
-                    required
-                    minLength={4}
-                    className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
-                    placeholder="Mínimo 4 caracteres (ex: admin)"
-                  />
+        modoClienteVisitante ? (
+          <motion.div
+            key="tela-cliente-visitante"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="min-h-[100dvh] bg-[#F6F4F3] text-[#505859] flex flex-col overflow-x-clip"
+          >
+            <header className="bg-[#FCFBFB] border-b border-[#E5DFDE] sticky top-0 z-30 no-print">
+              <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="inline-flex items-center justify-center w-10 h-10 shrink-0">
+                    <Image
+                      src="/logo.png"
+                      alt="Logo FB Odonto"
+                      width={40}
+                      height={40}
+                      priority
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 object-contain"
+                    />
+                  </span>
+                  <h1 className="font-bold text-[#3E4546] leading-tight truncate whitespace-nowrap">
+                    {config.nomeConsultorio}
+                  </h1>
                 </div>
 
                 <button
-                  type="submit"
-                  className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
+                  type="button"
+                  onClick={() => setModoClienteVisitante(false)}
+                  className="px-3 py-1.5 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  <LogIn className="w-5 h-5 text-[#CDA9A8]" />
-                  <span>Ativar Acesso e Entrar</span>
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#505859] mb-1.5">Usuário</label>
-                  <input
-                    type="text"
-                    name="username"
-                    autoComplete="username"
-                    value={usuario}
-                    onChange={(e) => setUsuario(e.target.value)}
-                    required
-                    className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
-                    placeholder="Ex: admin"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#505859] mb-1.5">Senha</label>
-                  <input
-                    type="password"
-                    name="password"
-                    autoComplete="current-password"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                    required
-                    className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
-                    placeholder="••••••••"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
-                >
-                  <LogIn className="w-5 h-5 text-[#CDA9A8]" />
+                  <ArrowLeft className="w-3.5 h-3.5 text-[#9E7372]" />
                   <span>Entrar no Sistema</span>
                 </button>
-              </form>
-            )}
-          </div>
-        </motion.main>
+              </div>
+            </header>
+
+            <main className="flex-1 min-w-0 max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 w-full">
+              <LeitorQrCode
+                nomeConsultorio={config.nomeConsultorio}
+                permitirReimpressao={false}
+              />
+            </main>
+          </motion.div>
+        ) : (
+          <motion.main
+            key="tela-login"
+            initial={{ opacity: 0, y: 12, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.985 }}
+            transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+            className="min-h-[100dvh] bg-[#F6F4F3] flex items-center justify-center p-4 sm:p-6 relative"
+          >
+            <div className="max-w-md w-full bg-[#FCFBFB] rounded-2xl border border-[#E5DFDE] shadow-sm p-8">
+              <div className="text-center mb-7 pb-6 border-b border-[#EDE7E6]">
+                <div className="flex justify-center mb-4">
+                  <Image
+                    src="/logo.png"
+                    alt="Logo FB Odonto"
+                    width={130}
+                    height={130}
+                    priority
+                    referrerPolicy="no-referrer"
+                    className="w-[130px] h-[130px] object-contain"
+                  />
+                </div>
+                <h1 className="text-2xl font-bold text-[#3E4546] tracking-tight">{config.nomeConsultorio}</h1>
+                <p className="text-sm text-[#7A8283] mt-1">Controle e Rastreabilidade de Esterilização</p>
+              </div>
+
+              {!adminConfigured ? (
+                <form onSubmit={handleSetupAdmin} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#505859] mb-1.5">
+                      Usuário Administrador
+                    </label>
+                    <input
+                      type="text"
+                      value={setupUsuario}
+                      onChange={(e) => setSetupUsuario(e.target.value)}
+                      required
+                      className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#505859] mb-1.5">
+                      Senha Inicial
+                    </label>
+                    <input
+                      type="password"
+                      value={setupSenha}
+                      onChange={(e) => setSetupSenha(e.target.value)}
+                      required
+                      minLength={4}
+                      className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
+                      placeholder="Mínimo 4 caracteres (ex: admin)"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
+                  >
+                    <LogIn className="w-5 h-5 text-[#CDA9A8]" />
+                    <span>Ativar Acesso e Entrar</span>
+                  </button>
+                </form>
+              ) : (
+                <div className="space-y-4">
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#505859] mb-1.5">Usuário</label>
+                      <input
+                        type="text"
+                        name="username"
+                        autoComplete="username"
+                        value={usuario}
+                        onChange={(e) => setUsuario(e.target.value)}
+                        required
+                        className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
+                        placeholder="Ex: admin"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-[#505859] mb-1.5">Senha</label>
+                      <input
+                        type="password"
+                        name="password"
+                        autoComplete="current-password"
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                        required
+                        className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/60 focus:border-[#B58988] text-[#3E4546]"
+                        placeholder="••••••••"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer"
+                    >
+                      <LogIn className="w-5 h-5 text-[#CDA9A8]" />
+                      <span>Entrar no Sistema</span>
+                    </button>
+                  </form>
+
+                  <div className="pt-2 border-t border-[#EDE7E6]">
+                    <button
+                      type="button"
+                      onClick={() => setPopupClienteAberto(true)}
+                      className="w-full py-2.5 px-4 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <ScanLine className="w-4 h-4 text-[#9E7372]" />
+                      <span>Sou cliente</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <AnimatePresence>
+              {popupClienteAberto && adminConfigured && (
+                <motion.div
+                  key="popup-sou-cliente"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.22 }}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="titulo-sou-cliente"
+                  onClick={() => setPopupClienteAberto(false)}
+                  className="fixed inset-0 z-50 bg-[#3E4546]/55 backdrop-blur-[2px] flex items-center justify-center p-4"
+                >
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-[#FCFBFB] rounded-2xl border border-[#E5DFDE] shadow-xl max-w-sm w-full p-6 text-center space-y-5 relative"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPopupClienteAberto(false)}
+                      aria-label="Fechar popup e ir para o login"
+                      className="absolute top-3.5 right-3.5 p-1.5 text-[#7A8283] hover:text-[#3E4546] hover:bg-[#F4EFEF] rounded-lg transition cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+
+                    <div className="space-y-2 pt-1">
+                      <div className="flex justify-center">
+                        <Image
+                          src="/logo.png"
+                          alt="Logo FB Odonto"
+                          width={72}
+                          height={72}
+                          referrerPolicy="no-referrer"
+                          className="w-[72px] h-[72px] object-contain"
+                        />
+                      </div>
+                      <h2
+                        id="titulo-sou-cliente"
+                        className="text-xl font-bold text-[#3E4546] tracking-tight"
+                      >
+                        Sou cliente
+                      </h2>
+                      <p className="text-xs text-[#7A8283]">
+                        Consulte sua etiqueta de esterilização ou conheça nosso consultório.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPopupClienteAberto(false);
+                          setModoClienteVisitante(true);
+                        }}
+                        className="w-full py-3 px-4 bg-[#505859] hover:bg-[#3E4546] text-white text-sm font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <ScanLine className="w-4 h-4 text-[#CDA9A8]" />
+                        <span>Ler Qr Code</span>
+                      </button>
+
+                      <a
+                        href="https://linktr.ee/drafabianabezerra"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-sm font-semibold rounded-xl transition flex items-center justify-center gap-2"
+                      >
+                        <ExternalLink className="w-4 h-4 text-[#9E7372]" />
+                        <span>Conhecer consultório</span>
+                      </a>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.main>
+        )
+      ) : ehCliente ? (
+        <motion.div
+          key="tela-cliente-autenticado"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col overflow-x-clip"
+        >
+          <header className="bg-[#FCFBFB] border-b border-[#E5DFDE] sticky top-0 z-30 no-print">
+            <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="inline-flex items-center justify-center w-10 h-10 shrink-0">
+                  <Image
+                    src="/logo.png"
+                    alt="Logo FB Odonto"
+                    width={40}
+                    height={40}
+                    priority
+                    referrerPolicy="no-referrer"
+                    className="w-10 h-10 object-contain"
+                  />
+                </span>
+                <h1 className="font-bold text-[#3E4546] leading-tight truncate whitespace-nowrap">
+                  {config.nomeConsultorio}
+                </h1>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="hidden sm:inline text-xs font-medium text-[#9E7372] whitespace-nowrap">
+                  Leitor de QR Code
+                </span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="px-3 py-1.5 text-xs font-semibold text-[#505859] hover:text-[#8C3B3B] hover:bg-[#F9EDED] border border-[#E5DFDE] bg-white rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <LogOut className="w-3.5 h-3.5 shrink-0" />
+                  <span>Sair</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="flex-1 min-w-0 max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 w-full">
+            <LeitorQrCode
+              nomeConsultorio={config.nomeConsultorio}
+              permitirReimpressao={false}
+            />
+          </main>
+        </motion.div>
       ) : (
         <motion.div
           key="tela-app"
@@ -1191,7 +1631,9 @@ export default function CadastroPage() {
                 <User className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] text-[#7A8283] leading-tight">Usuário conectado</p>
+                <p className="text-[11px] text-[#7A8283] leading-tight">
+                  {LABEL_CARGO[cargoUsuario]}
+                </p>
                 <p className="text-sm font-semibold text-[#3E4546] truncate">
                   {usuarioConectado || 'Usuário'}
                 </p>
@@ -1296,12 +1738,8 @@ export default function CadastroPage() {
                         className="w-full"
                       >
                       {subAbaLote === 'cadastro' ? (
-                <div className={loteCriado ? 'grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6' : 'max-w-3xl mx-auto'}>
-                  <div
-                    className={`${
-                      loteCriado ? 'md:col-span-2' : ''
-                    } min-w-0 bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6 no-print`}
-                  >
+                <div className="max-w-3xl mx-auto">
+                  <div className="min-w-0 bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6 no-print">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2 mb-4 sm:mb-5 pb-3 sm:pb-4 border-b border-[#EDE7E6]">
                       <h2 className="text-base sm:text-lg font-bold text-[#3E4546]">Novo Lote de Esterilização</h2>
                       <span className="text-xs font-mono tabular-nums text-[#7A8283] flex flex-wrap items-center gap-x-1">
@@ -1439,45 +1877,6 @@ export default function CadastroPage() {
                       </button>
                     </form>
                   </div>
-
-                  {loteCriado && (
-                    <div className="min-w-0 space-y-4 sm:space-y-6 no-print">
-                      <div className="bg-[#F8F3F3] border border-[#CDA9A8]/65 rounded-xl p-4 sm:p-5 text-[#3E4546] space-y-3">
-                        <div className="flex items-center gap-2 font-bold text-sm sm:text-base text-[#3E4546]">
-                          <CheckCircle2 className="w-5 h-5 text-[#9E7372] shrink-0" />
-                          <span className="truncate">Lote {loteCriado.codigo} Cadastrado!</span>
-                        </div>
-                        <p className="text-xs text-[#6E7677]">
-                          {quantidade} etiqueta(s) pronta(s) para impressão ou acesso ao cartão público.
-                        </p>
-                        <div className="flex justify-center bg-white rounded-lg p-3 border border-[#E5DFDE] overflow-x-auto max-w-full">
-                          <Etiqueta
-                            lote={loteCriado}
-                            larguraMm={config.larguraMm}
-                            alturaMm={config.alturaMm}
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => window.print()}
-                            className="py-2.5 px-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap transition"
-                          >
-                            <Printer className="w-4 h-4 text-[#CDA9A8] shrink-0" />
-                            <span>Imprimir</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setLoteModal(loteCriado)}
-                            className="py-2.5 px-3 bg-white border border-[#DCD4D3] hover:bg-[#F4EFEF] text-[#505859] font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 whitespace-nowrap transition cursor-pointer"
-                          >
-                            <Eye className="w-4 h-4 text-[#9E7372] shrink-0" />
-                            <span>Cartão</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6 no-print">
@@ -1539,8 +1938,8 @@ export default function CadastroPage() {
                                   setLoteCriado(l);
                                   setQuantidade(1);
                                   setQuantidadeInput('1');
-                                  mudarSubAbaLote('cadastro');
-                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                  setOrigemImpressao('reimpressao');
+                                  setPopupImpressaoAberto(true);
                                 }}
                                 className="py-2 px-3 bg-[#F4ECEC] hover:bg-[#EBDDDD] text-[#505859] border border-[#E3D3D2] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
                               >
@@ -1591,8 +1990,8 @@ export default function CadastroPage() {
                                       setLoteCriado(l);
                                       setQuantidade(1);
                                       setQuantidadeInput('1');
-                                      mudarSubAbaLote('cadastro');
-                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                      setOrigemImpressao('reimpressao');
+                                      setPopupImpressaoAberto(true);
                                     }}
                                     className="px-2.5 py-1 bg-[#F4ECEC] hover:bg-[#EBDDDD] text-[#505859] border border-[#E3D3D2] text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
                                   >
@@ -1644,8 +2043,8 @@ export default function CadastroPage() {
                     setLoteCriado(lote);
                     setQuantidade(1);
                     setQuantidadeInput('1');
-                    setSubAbaLote('cadastro');
-                    selecionarAba('novo');
+                    setOrigemImpressao('reimpressao');
+                    setPopupImpressaoAberto(true);
                   }}
                 />
               </motion.div>
@@ -1666,6 +2065,7 @@ export default function CadastroPage() {
                 className="w-full no-print touch-pan-y"
               >
                 <div className="max-w-2xl mx-auto space-y-6">
+                {ehAdmin && (
                 <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit">
                   <button
                     type="button"
@@ -1702,9 +2102,10 @@ export default function CadastroPage() {
                       />
                     )}
                     <UserPlus className="relative z-10 w-3.5 h-3.5 text-[#9E7372]" />
-                    <span className="relative z-10">Cadastrar Usuário</span>
+                    <span className="relative z-10">Usuários</span>
                   </button>
                 </div>
+                )}
 
                 <div className="relative overflow-x-clip">
                   <div
@@ -1717,7 +2118,7 @@ export default function CadastroPage() {
                   >
                     <AnimatePresence mode="popLayout" initial={false} custom={direcaoSubConfig}>
                       <motion.div
-                        key={subAbaConfig}
+                        key={!ehAdmin ? 'geral' : subAbaConfig}
                         custom={direcaoSubConfig}
                         variants={subTabSlideVariants}
                         initial="enter"
@@ -1726,13 +2127,21 @@ export default function CadastroPage() {
                         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                         className="w-full"
                       >
-                      {subAbaConfig === 'geral' ? (
+                      {!ehAdmin || subAbaConfig === 'geral' ? (
                 <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6">
-                  <h2 className="text-base sm:text-lg font-bold text-[#3E4546] mb-4 pb-3 border-b border-[#EDE7E6]">
-                    Configurações de Impressão e Consultório
-                  </h2>
+                  <div className="mb-4 pb-3 border-b border-[#EDE7E6]">
+                    <h2 className="text-base sm:text-lg font-bold text-[#3E4546]">
+                      {ehAdmin ? 'Configurações de Impressão e Consultório' : 'Configuração de Etiquetas'}
+                    </h2>
+                    {!ehAdmin && (
+                      <p className="text-xs text-[#7A8283] mt-0.5">
+                        Ajuste as dimensões das etiquetas para impressão. Outras configurações são exclusivas do administrador.
+                      </p>
+                    )}
+                  </div>
 
                   <form onSubmit={handleSalvarConfig} className="space-y-3.5 sm:space-y-4">
+                    {ehAdmin && (
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                         Nome do Consultório
@@ -1745,6 +2154,7 @@ export default function CadastroPage() {
                         className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546]"
                       />
                     </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                       <div className="min-w-0">
@@ -1777,6 +2187,8 @@ export default function CadastroPage() {
                       </div>
                     </div>
 
+                    {ehAdmin && (
+                    <>
                     <div>
                       <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                         Dias de Validade Padrão
@@ -1863,6 +2275,8 @@ export default function CadastroPage() {
                         </div>
                       )}
                     </div>
+                    </>
+                    )}
 
                     <button
                       type="submit"
@@ -1878,23 +2292,40 @@ export default function CadastroPage() {
                   <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6">
                     <h2 className="text-base sm:text-lg font-bold text-[#3E4546] mb-1">Cadastrar Novo Usuário</h2>
                     <p className="text-xs text-[#7A8283] mb-4 pb-4 border-b border-[#EDE7E6]">
-                      Crie acessos individuais para dentistas e auxiliares (login simples sem e-mail). A senha padrão inicial é{' '}
-                      <span className="font-mono font-semibold text-[#9E7372]">1234</span>.
+                      Crie acessos individuais definindo login, senha inicial (padrão{' '}
+                      <span className="font-mono font-semibold text-[#9E7372]">1234</span>) e cargo de permissão.
                     </p>
 
                     <form onSubmit={handleCadastrarUsuario} className="space-y-3.5 sm:space-y-4">
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-[#505859] mb-1.5">
-                          Usuário (login) *
-                        </label>
-                        <input
-                          type="text"
-                          value={novoUsuario}
-                          onChange={(e) => setNovoUsuario(e.target.value)}
-                          required
-                          placeholder="Ex: fabiana ou auxiliar"
-                          className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-base sm:text-sm text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                        <div className="min-w-0">
+                          <label className="block text-xs font-semibold text-[#505859] mb-1.5">
+                            Usuário (login) *
+                          </label>
+                          <input
+                            type="text"
+                            value={novoUsuario}
+                            onChange={(e) => setNovoUsuario(e.target.value)}
+                            required
+                            placeholder="Ex: fabiana ou auxiliar"
+                            className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-base sm:text-sm text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <label className="block text-xs font-semibold text-[#505859] mb-1.5">
+                            Cargo *
+                          </label>
+                          <select
+                            value={novoCargo}
+                            onChange={(e) => setNovoCargo(e.target.value as CargoUsuario)}
+                            className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-base sm:text-sm text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                          >
+                            <option value="usuario">Usuário</option>
+                            <option value="administrador">Administrador</option>
+                            <option value="cliente">Cliente</option>
+                          </select>
+                        </div>
                       </div>
 
                       <div className="min-w-0">
@@ -1934,6 +2365,12 @@ export default function CadastroPage() {
                         </div>
                       </div>
 
+                      <div className="text-[11px] text-[#7A8283] bg-[#F8F5F5] border border-[#EDE7E6] rounded-lg p-3 space-y-1">
+                        <p><strong className="text-[#505859]">Administrador:</strong> acesso total ao sistema e usuários.</p>
+                        <p><strong className="text-[#505859]">Usuário:</strong> lotes, QR Code e apenas dimensão de etiquetas nas configurações.</p>
+                        <p><strong className="text-[#505859]">Cliente:</strong> apenas leitor de QR Code e visualização pública dos lotes.</p>
+                      </div>
+
                       <button
                         type="submit"
                         disabled={cadastrandoUsuario}
@@ -1947,17 +2384,189 @@ export default function CadastroPage() {
 
                   {usuariosLista.length > 0 && (
                     <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6">
-                      <h3 className="text-sm font-bold text-[#3E4546] mb-3">Usuários Cadastrados</h3>
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <h3 className="text-sm font-bold text-[#3E4546]">Gerenciar Logins e Cargos</h3>
+                        <span className="text-xs text-[#7A8283] tabular-nums">
+                          {usuariosLista.length} {usuariosLista.length === 1 ? 'conta' : 'contas'}
+                        </span>
+                      </div>
+
                       <div className="divide-y divide-[#EDE7E6]">
-                        {usuariosLista.map((u) => (
-                          <div key={u.usuario} className="py-2.5 flex items-center justify-between text-sm">
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                              <span className="font-semibold text-[#3E4546] break-words">{u.nome}</span>
-                              <span className="text-[#CDA9A8]">·</span>
-                              <span className="font-mono text-xs text-[#6E7677]">{u.usuario}</span>
+                        {usuariosLista.map((u) => {
+                          const emEdicao = usuarioEditando === u.usuario;
+                          const emConfirmacao = confirmandoExclusao === u.usuario;
+                          const ehProprio = u.usuario === usuarioLoginAtual;
+
+                          return (
+                            <div key={u.usuario} className="py-3 space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 text-sm">
+                                <div className="min-w-0 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <span className="font-semibold text-[#3E4546] break-words">
+                                      {u.nome}
+                                    </span>
+                                    <span className="text-[#CDA9A8]">·</span>
+                                    <span className="font-mono text-xs text-[#6E7677]">{u.usuario}</span>
+                                    {ehProprio && (
+                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#F4EFEF] text-[#9E7372] border border-[#E5DFDE]">
+                                        Você
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[11px] text-[#7A8283]">
+                                    <Shield className="w-3 h-3 text-[#9E7372] shrink-0" />
+                                    <span>{LABEL_CARGO[u.role]}</span>
+                                    {u.protegido && (
+                                      <span>· Configurado por variável de ambiente</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {!u.protegido && !emEdicao && (
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => iniciarEdicaoUsuario(u)}
+                                      className="px-2.5 py-1.5 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 text-[#9E7372]" />
+                                      <span>Editar</span>
+                                    </button>
+
+                                    {!ehProprio && (
+                                      emConfirmacao ? (
+                                        <div className="inline-flex items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            disabled={excluindoUsuario === u.usuario}
+                                            onClick={() => handleExcluirUsuario(u.usuario)}
+                                            className="px-2.5 py-1.5 bg-[#8C4A49] hover:bg-[#733B3A] disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
+                                          >
+                                            <Check className="w-3.5 h-3.5" />
+                                            <span>{excluindoUsuario === u.usuario ? 'Excluindo...' : 'Confirmar'}</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setConfirmandoExclusao(null)}
+                                            className="px-2 py-1.5 bg-white hover:bg-[#F4EFEF] text-[#6E7677] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition cursor-pointer"
+                                          >
+                                            Cancelar
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            cancelarEdicaoUsuario();
+                                            setConfirmandoExclusao(u.usuario);
+                                          }}
+                                          className="px-2.5 py-1.5 bg-white hover:bg-[#F9EDED] text-[#8C4A49] border border-[#E8C8C8] text-xs font-semibold rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                          <span>Excluir</span>
+                                        </button>
+                                      )
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {emEdicao && (
+                                <form
+                                  onSubmit={handleSalvarEdicaoUsuario}
+                                  className="bg-[#F8F5F5] border border-[#E5DFDE] rounded-xl p-3.5 space-y-3"
+                                >
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="min-w-0">
+                                      <label className="block text-[11px] font-semibold text-[#505859] mb-1">
+                                        Login *
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={editLogin}
+                                        onChange={(e) => setEditLogin(e.target.value)}
+                                        required
+                                        minLength={2}
+                                        className="w-full min-w-0 px-3 py-2 bg-white border border-[#DCD4D3] rounded-lg text-sm text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                                      />
+                                    </div>
+
+                                    <div className="min-w-0">
+                                      <label className="block text-[11px] font-semibold text-[#505859] mb-1">
+                                        Cargo *
+                                      </label>
+                                      <select
+                                        value={editCargo}
+                                        onChange={(e) => setEditCargo(e.target.value as CargoUsuario)}
+                                        disabled={ehProprio}
+                                        className="w-full min-w-0 px-3 py-2 bg-white disabled:bg-[#F4EFEF] border border-[#DCD4D3] rounded-lg text-sm text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                                      >
+                                        <option value="usuario">Usuário</option>
+                                        <option value="administrador">Administrador</option>
+                                        <option value="cliente">Cliente</option>
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="min-w-0">
+                                      <label className="block text-[11px] font-semibold text-[#505859] mb-1">
+                                        Nome Completo
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={editNome}
+                                        onChange={(e) => setEditNome(e.target.value)}
+                                        className="w-full min-w-0 px-3 py-2 bg-white border border-[#DCD4D3] rounded-lg text-sm text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                                      />
+                                    </div>
+
+                                    <div className="min-w-0">
+                                      <label className="block text-[11px] font-semibold text-[#505859] mb-1">
+                                        Nova Senha (opcional)
+                                      </label>
+                                      <div className="relative">
+                                        <input
+                                          type={mostrarEditSenha ? 'text' : 'password'}
+                                          value={editNovaSenha}
+                                          onChange={(e) => setEditNovaSenha(e.target.value)}
+                                          minLength={4}
+                                          placeholder="Manter senha atual"
+                                          className="w-full min-w-0 px-3 py-2 pr-9 bg-white border border-[#DCD4D3] rounded-lg text-sm font-mono text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => setMostrarEditSenha((prev) => !prev)}
+                                          aria-label="Mostrar ou ocultar nova senha"
+                                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[#7A8283] hover:text-[#3E4546] cursor-pointer"
+                                        >
+                                          {mostrarEditSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-end gap-2 pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={cancelarEdicaoUsuario}
+                                      className="px-3 py-1.5 bg-white hover:bg-[#F4EFEF] text-[#505859] border border-[#DCD4D3] text-xs font-semibold rounded-lg transition cursor-pointer"
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      type="submit"
+                                      disabled={salvandoEdicaoUsuario}
+                                      className="px-3.5 py-1.5 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition cursor-pointer"
+                                    >
+                                      {salvandoEdicaoUsuario ? 'Salvando...' : 'Salvar Alterações'}
+                                    </button>
+                                  </div>
+                                </form>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1988,6 +2597,117 @@ export default function CadastroPage() {
               </div>
             </div>
           )}
+
+          {popupImpressaoAberto && loteCriado && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="titulo-popup-impressao"
+              className="fixed inset-0 z-50 bg-[#3E4546]/55 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-6 overflow-y-auto no-print"
+              onClick={() => setPopupImpressaoAberto(false)}
+            >
+              <div
+                className="bg-[#FCFBFB] rounded-2xl border border-[#E5DFDE] shadow-xl max-w-md w-full p-4 sm:p-6 space-y-4 my-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#EDE7E6]">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-[#F4ECEC] border border-[#CDA9A8]/60 flex items-center justify-center shrink-0">
+                      {origemImpressao === 'cadastro' ? (
+                        <CheckCircle2 className="w-5 h-5 text-[#9E7372]" />
+                      ) : (
+                        <Printer className="w-4 h-4 text-[#9E7372]" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h3
+                        id="titulo-popup-impressao"
+                        className="text-sm sm:text-base font-bold text-[#3E4546] truncate"
+                      >
+                        {origemImpressao === 'cadastro'
+                          ? `Lote ${loteCriado.codigo} Cadastrado!`
+                          : `Reimprimir Lote ${loteCriado.codigo}`}
+                      </h3>
+                      <p className="text-xs text-[#6E7677]">
+                        {quantidade} etiqueta(s) pronta(s) para impressão ou acesso ao cartão público.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPopupImpressaoAberto(false)}
+                    aria-label="Fechar janela de impressão"
+                    className="p-1.5 text-[#6E7677] hover:text-[#3E4546] hover:bg-[#F4EFEF] rounded-lg transition cursor-pointer shrink-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex justify-center bg-white rounded-xl p-3 border border-[#E5DFDE] overflow-x-auto max-w-full">
+                  <Etiqueta
+                    lote={loteCriado}
+                    larguraMm={config.larguraMm}
+                    alturaMm={config.alturaMm}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-3 bg-[#F8F5F5] border border-[#E5DFDE] rounded-xl px-3.5 py-2.5">
+                  <div>
+                    <label
+                      htmlFor="popup-qtd-etiquetas"
+                      className="block text-xs font-semibold text-[#505859]"
+                    >
+                      Quantidade de etiquetas
+                    </label>
+                    <span className="text-[11px] text-[#7A8283] tabular-nums">
+                      Medidas: {config.larguraMm} × {config.alturaMm} mm
+                    </span>
+                  </div>
+                  <input
+                    id="popup-qtd-etiquetas"
+                    type="text"
+                    inputMode="numeric"
+                    value={quantidadeInput}
+                    onChange={(e) => {
+                      const apenasDigitos = e.target.value.replace(/\D/g, '');
+                      setQuantidadeInput(apenasDigitos);
+                      const parsed = parseInt(apenasDigitos, 10);
+                      if (!isNaN(parsed) && parsed >= 1) {
+                        setQuantidade(Math.min(60, parsed));
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseInt(quantidadeInput, 10);
+                      const valido = isNaN(parsed) || parsed < 1 ? 1 : Math.min(60, parsed);
+                      setQuantidadeInput(String(valido));
+                      setQuantidade(valido);
+                    }}
+                    className="w-20 px-2.5 py-1.5 text-center bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-sm font-semibold text-[#3E4546] tabular-nums"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="py-2.5 px-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg text-xs sm:text-sm flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap transition"
+                  >
+                    <Printer className="w-4 h-4 text-[#CDA9A8] shrink-0" />
+                    <span>Imprimir</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLoteModal(loteCriado)}
+                    className="py-2.5 px-3 bg-white border border-[#DCD4D3] hover:bg-[#F4EFEF] text-[#505859] font-semibold rounded-lg text-xs sm:text-sm flex items-center justify-center gap-1.5 whitespace-nowrap transition cursor-pointer"
+                  >
+                    <Eye className="w-4 h-4 text-[#9E7372] shrink-0" />
+                    <span>Cartão</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {loteModal && (
             <ModalCartaoLote
               lote={loteModal}

@@ -8,15 +8,33 @@ export const SESSION_COOKIE_NAME = 'fb_odonto_session';
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 dias
 export const SESSION_TTL_MS = SESSION_MAX_AGE_SECONDS * 1000;
 
+export type CargoUsuario = 'administrador' | 'usuario' | 'cliente';
+
+export function normalizarCargo(role?: string | null): CargoUsuario {
+  const limpo = (role || '').trim().toLowerCase();
+  if (limpo === 'admin' || limpo === 'administrador') return 'administrador';
+  if (limpo === 'cliente') return 'cliente';
+  return 'usuario';
+}
+
+function cargoParaDbFallback(cargo: CargoUsuario): string {
+  if (cargo === 'administrador') return 'admin';
+  if (cargo === 'usuario') return 'operador';
+  return 'cliente';
+}
+
+const DISABLED_MARKER = 'DISABLED';
+
 const DATA_DIR = path.resolve(process.cwd(), '.data');
 const USERS_FILE = path.resolve(DATA_DIR, 'users.json');
 const SESSIONS_FILE = path.resolve(DATA_DIR, 'sessions.json');
 
-// Segredo de assinatura de sessão: usa AUTH_SECRET do ambiente ou gera chave em memória para o processo
 const globalForAuth = globalThis as typeof globalThis & {
   __fbOdontoAuthSecret?: Buffer;
   __fbOdontoRevokedHashes?: Set<string>;
+  __fbOdontoRevokedUsersAt?: Map<string, number>;
 };
+
 function getSigningKey(): Buffer {
   const envSecret = process.env.AUTH_SECRET?.trim();
   if (envSecret && envSecret.length >= 16) {
@@ -33,6 +51,13 @@ function getRevokedHashesSet(): Set<string> {
     globalForAuth.__fbOdontoRevokedHashes = new Set<string>();
   }
   return globalForAuth.__fbOdontoRevokedHashes;
+}
+
+function getRevokedUsersMap(): Map<string, number> {
+  if (!globalForAuth.__fbOdontoRevokedUsersAt) {
+    globalForAuth.__fbOdontoRevokedUsersAt = new Map<string, number>();
+  }
+  return globalForAuth.__fbOdontoRevokedUsersAt;
 }
 
 function getServerSupabase() {
@@ -77,7 +102,7 @@ function isMissingTableError(error: { code?: string; message?: string } | null):
 export type StoredUser = {
   usuario: string;
   nome: string;
-  role: 'admin' | 'operador';
+  role: CargoUsuario;
   salt: string;
   hash: string;
   criadoEm: string;
@@ -86,14 +111,19 @@ export type StoredUser = {
 export type PublicUser = {
   usuario: string;
   nome: string;
-  role: 'admin' | 'operador';
+  role: CargoUsuario;
   criadoEm: string;
+  protegido?: boolean;
 };
 
 export type UserStorageMode = 'supabase' | 'local';
 
 export function normalizarUsuario(usuario: string): string {
   return usuario.trim().toLowerCase().replace(/\s+/g, '');
+}
+
+export function computePasswordVersion(hash: string): string {
+  return crypto.createHash('sha256').update(hash).digest('hex').slice(0, 12);
 }
 
 export function hashPassword(password: string, saltHex?: string): { salt: string; hash: string } {
@@ -103,6 +133,9 @@ export function hashPassword(password: string, saltHex?: string): { salt: string
 }
 
 export function verifyPassword(password: string, salt: string, expectedHashHex: string): boolean {
+  if (!salt || !expectedHashHex || salt === DISABLED_MARKER || expectedHashHex === DISABLED_MARKER) {
+    return false;
+  }
   const { hash } = hashPassword(password, salt);
   const a = Buffer.from(hash, 'hex');
   const b = Buffer.from(expectedHashHex, 'hex');
@@ -127,7 +160,17 @@ function readLocalUsers(): StoredUser[] {
     if (!fs.existsSync(USERS_FILE)) return [];
     const raw = fs.readFileSync(USERS_FILE, 'utf8');
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as StoredUser[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as Array<Record<string, unknown>>)
+      .filter((u) => u && u.salt !== DISABLED_MARKER && u.hash !== DISABLED_MARKER)
+      .map((u) => ({
+        usuario: String(u.usuario || ''),
+        nome: String(u.nome || ''),
+        role: normalizarCargo(typeof u.role === 'string' ? u.role : undefined),
+        salt: String(u.salt || ''),
+        hash: String(u.hash || ''),
+        criadoEm: String(u.criadoEm || new Date().toISOString()),
+      }));
   } catch {
     return [];
   }
@@ -141,7 +184,7 @@ function writeLocalUsers(users: StoredUser[]): void {
 type DbUserRow = {
   usuario: string;
   nome: string;
-  role: 'admin' | 'operador';
+  role: string;
   salt: string;
   hash: string;
   criado_em: string;
@@ -151,7 +194,7 @@ function mapRowToStoredUser(row: DbUserRow): StoredUser {
   return {
     usuario: row.usuario,
     nome: row.nome,
-    role: row.role === 'admin' ? 'admin' : 'operador',
+    role: normalizarCargo(row.role),
     salt: row.salt,
     hash: row.hash,
     criadoEm: row.criado_em,
@@ -169,7 +212,9 @@ export async function listStoredUsers(): Promise<{ users: StoredUser[]; storageM
 
       if (!error && data) {
         return {
-          users: (data as DbUserRow[]).map(mapRowToStoredUser),
+          users: (data as DbUserRow[])
+            .filter((r) => r.salt !== DISABLED_MARKER && r.hash !== DISABLED_MARKER)
+            .map(mapRowToStoredUser),
           storageMode: 'supabase',
         };
       }
@@ -187,7 +232,7 @@ export async function listStoredUsers(): Promise<{ users: StoredUser[]; storageM
 
 export async function findStoredUser(
   usuario: string
-): Promise<{ user: StoredUser | null; storageMode: UserStorageMode }> {
+): Promise<{ user: StoredUser | null; storageMode: UserStorageMode; queryFailed?: boolean }> {
   const sb = getServerSupabase();
   if (sb) {
     try {
@@ -198,17 +243,26 @@ export async function findStoredUser(
         .maybeSingle();
 
       if (!error) {
+        if (!data) {
+          return { user: null, storageMode: 'supabase' };
+        }
+        const row = data as DbUserRow;
+        if (row.salt === DISABLED_MARKER || row.hash === DISABLED_MARKER) {
+          return { user: null, storageMode: 'supabase' };
+        }
         return {
-          user: data ? mapRowToStoredUser(data as DbUserRow) : null,
+          user: mapRowToStoredUser(row),
           storageMode: 'supabase',
         };
       }
 
       if (!isMissingTableError(error)) {
         console.warn('Erro ao buscar usuário no Supabase:', error.message);
+        return { user: null, storageMode: 'supabase', queryFailed: true };
       }
     } catch (e) {
       console.warn('Falha ao buscar usuário no Supabase:', e);
+      return { user: null, storageMode: 'supabase', queryFailed: true };
     }
   }
 
@@ -227,7 +281,52 @@ export async function createStoredUser(
 
   if (sb) {
     try {
-      const { data, error } = await sb
+      // Verifica se existe um registro previamente desativado com o mesmo login
+      const { data: existente } = await sb
+        .from('usuarios')
+        .select('usuario, salt, hash')
+        .eq('usuario', user.usuario)
+        .maybeSingle();
+
+      if (existente && (existente.salt === DISABLED_MARKER || existente.hash === DISABLED_MARKER)) {
+        let updateRes = await sb
+          .from('usuarios')
+          .update({
+            nome: user.nome,
+            role: user.role,
+            salt: user.salt,
+            hash: user.hash,
+            criado_em: criadoEm,
+          })
+          .eq('usuario', user.usuario)
+          .select('usuario, nome, role, salt, hash, criado_em')
+          .single();
+
+        if (updateRes.error?.code === '23514' && user.role !== 'cliente') {
+          updateRes = await sb
+            .from('usuarios')
+            .update({
+              nome: user.nome,
+              role: cargoParaDbFallback(user.role),
+              salt: user.salt,
+              hash: user.hash,
+              criado_em: criadoEm,
+            })
+            .eq('usuario', user.usuario)
+            .select('usuario, nome, role, salt, hash, criado_em')
+            .single();
+        }
+
+        if (!updateRes.error && updateRes.data) {
+          getRevokedUsersMap().delete(user.usuario);
+          return {
+            created: mapRowToStoredUser(updateRes.data as DbUserRow),
+            storageMode: 'supabase',
+          };
+        }
+      }
+
+      let insertRes = await sb
         .from('usuarios')
         .insert([
           {
@@ -242,19 +341,43 @@ export async function createStoredUser(
         .select('usuario, nome, role, salt, hash, criado_em')
         .single();
 
-      if (!error && data) {
+      if (insertRes.error?.code === '23514' && user.role !== 'cliente') {
+        insertRes = await sb
+          .from('usuarios')
+          .insert([
+            {
+              usuario: user.usuario,
+              nome: user.nome,
+              role: cargoParaDbFallback(user.role),
+              salt: user.salt,
+              hash: user.hash,
+              criado_em: criadoEm,
+            },
+          ])
+          .select('usuario, nome, role, salt, hash, criado_em')
+          .single();
+      }
+
+      if (!insertRes.error && insertRes.data) {
+        getRevokedUsersMap().delete(user.usuario);
         return {
-          created: mapRowToStoredUser(data as DbUserRow),
+          created: mapRowToStoredUser(insertRes.data as DbUserRow),
           storageMode: 'supabase',
         };
       }
 
-      if (error?.code === '23505') {
+      if (insertRes.error?.code === '23505') {
         throw new Error('DUPLICATE_USER');
       }
 
-      if (!isMissingTableError(error)) {
-        throw new Error(error?.message || 'Erro ao gravar usuário no Supabase.');
+      if (insertRes.error?.code === '23514') {
+        throw new Error(
+          'Execute o script atualizado em supabase/schema.sql no Supabase para habilitar o cargo Cliente.'
+        );
+      }
+
+      if (!isMissingTableError(insertRes.error)) {
+        throw new Error(insertRes.error?.message || 'Erro ao gravar usuário no Supabase.');
       }
     } catch (err) {
       if (err instanceof Error && err.message === 'DUPLICATE_USER') {
@@ -273,7 +396,216 @@ export async function createStoredUser(
   const novo: StoredUser = { ...user, criadoEm };
   localUsers.push(novo);
   writeLocalUsers(localUsers);
+  getRevokedUsersMap().delete(user.usuario);
   return { created: novo, storageMode: 'local' };
+}
+
+export async function updateStoredUser(
+  usuarioAtual: string,
+  updates: {
+    novoUsuario?: string;
+    nome?: string;
+    role?: CargoUsuario;
+    salt?: string;
+    hash?: string;
+  }
+): Promise<{ updated: StoredUser; storageMode: UserStorageMode; credentialsChanged: boolean }> {
+  const targetNovoUsuario = updates.novoUsuario ? normalizarUsuario(updates.novoUsuario) : usuarioAtual;
+  const renomeou = targetNovoUsuario !== usuarioAtual;
+  const trocouSenha = Boolean(updates.salt && updates.hash);
+  const credentialsChanged = renomeou || trocouSenha;
+
+  const sb = getServerSupabase();
+  if (sb) {
+    try {
+      const { data: atualData, error: findErr } = await sb
+        .from('usuarios')
+        .select('usuario, nome, role, salt, hash, criado_em')
+        .eq('usuario', usuarioAtual)
+        .maybeSingle();
+
+      if (!findErr) {
+        if (!atualData || atualData.salt === DISABLED_MARKER || atualData.hash === DISABLED_MARKER) {
+          throw new Error('USER_NOT_FOUND');
+        }
+
+        if (renomeou) {
+          const { data: conflito } = await sb
+            .from('usuarios')
+            .select('usuario, salt, hash')
+            .eq('usuario', targetNovoUsuario)
+            .maybeSingle();
+
+          if (conflito && conflito.salt !== DISABLED_MARKER && conflito.hash !== DISABLED_MARKER) {
+            throw new Error('DUPLICATE_USER');
+          }
+          if (conflito && (conflito.salt === DISABLED_MARKER || conflito.hash === DISABLED_MARKER)) {
+            await sb.from('usuarios').delete().eq('usuario', targetNovoUsuario);
+          }
+        }
+
+        const roleFinal = updates.role ? updates.role : normalizarCargo(atualData.role as string);
+        const payloadUpdate: Record<string, string> = {
+          usuario: targetNovoUsuario,
+          nome: updates.nome !== undefined ? updates.nome : (atualData.nome as string),
+          role: roleFinal,
+        };
+        if (updates.salt && updates.hash) {
+          payloadUpdate.salt = updates.salt;
+          payloadUpdate.hash = updates.hash;
+        }
+
+        let updateRes = await sb
+          .from('usuarios')
+          .update(payloadUpdate)
+          .eq('usuario', usuarioAtual)
+          .select('usuario, nome, role, salt, hash, criado_em')
+          .single();
+
+        if (updateRes.error?.code === '23514' && roleFinal !== 'cliente') {
+          updateRes = await sb
+            .from('usuarios')
+            .update({ ...payloadUpdate, role: cargoParaDbFallback(roleFinal) })
+            .eq('usuario', usuarioAtual)
+            .select('usuario, nome, role, salt, hash, criado_em')
+            .single();
+        }
+
+        if (updateRes.error?.code === '23505') {
+          throw new Error('DUPLICATE_USER');
+        }
+        if (updateRes.error?.code === '23514') {
+          throw new Error(
+            'Execute o script atualizado em supabase/schema.sql no Supabase para habilitar o cargo Cliente.'
+          );
+        }
+        if (updateRes.error || !updateRes.data) {
+          throw new Error(updateRes.error?.message || 'Erro ao atualizar usuário no Supabase.');
+        }
+
+        if (credentialsChanged) {
+          await revokeUserSessions(usuarioAtual);
+          if (renomeou) {
+            await revokeUserSessions(targetNovoUsuario);
+          }
+        } else if (updates.role || updates.nome !== undefined) {
+          await sb
+            .from('sessoes')
+            .update({
+              nome: payloadUpdate.nome,
+              role: roleFinal,
+            })
+            .eq('usuario', targetNovoUsuario);
+        }
+
+        return {
+          updated: mapRowToStoredUser(updateRes.data as DbUserRow),
+          storageMode: 'supabase',
+          credentialsChanged,
+        };
+      }
+
+      if (!isMissingTableError(findErr)) {
+        throw new Error(findErr.message || 'Erro ao buscar usuário no Supabase.');
+      }
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        (err.message === 'USER_NOT_FOUND' ||
+          err.message === 'DUPLICATE_USER' ||
+          !err.message.toLowerCase().includes('does not exist'))
+      ) {
+        throw err;
+      }
+    }
+  }
+
+  const localUsers = readLocalUsers();
+  const idx = localUsers.findIndex((u) => u.usuario === usuarioAtual);
+  if (idx < 0) {
+    throw new Error('USER_NOT_FOUND');
+  }
+  if (renomeou && localUsers.some((u) => u.usuario === targetNovoUsuario)) {
+    throw new Error('DUPLICATE_USER');
+  }
+
+  const atual = localUsers[idx];
+  const atualizado: StoredUser = {
+    ...atual,
+    usuario: targetNovoUsuario,
+    nome: updates.nome !== undefined ? updates.nome : atual.nome,
+    role: updates.role ?? atual.role,
+    salt: updates.salt || atual.salt,
+    hash: updates.hash || atual.hash,
+  };
+  localUsers[idx] = atualizado;
+  writeLocalUsers(localUsers);
+
+  if (credentialsChanged) {
+    await revokeUserSessions(usuarioAtual);
+    if (renomeou) {
+      await revokeUserSessions(targetNovoUsuario);
+    }
+  }
+
+  return { updated: atualizado, storageMode: 'local', credentialsChanged };
+}
+
+export async function deleteStoredUser(
+  usuario: string
+): Promise<{ deleted: boolean; storageMode: UserStorageMode }> {
+  const sb = getServerSupabase();
+
+  if (sb) {
+    try {
+      const { data: deletedRows, error: delErr } = await sb
+        .from('usuarios')
+        .delete()
+        .eq('usuario', usuario)
+        .select('usuario');
+
+      if (!delErr && deletedRows && deletedRows.length > 0) {
+        await revokeUserSessions(usuario);
+        return { deleted: true, storageMode: 'supabase' };
+      }
+
+      // Fallback se o RLS ainda não tiver política de DELETE aplicada no Supabase:
+      // desativa definitivamente a conta na tabela usuarios via UPDATE
+      const { data: updatedRows, error: updErr } = await sb
+        .from('usuarios')
+        .update({
+          salt: DISABLED_MARKER,
+          hash: DISABLED_MARKER,
+        })
+        .eq('usuario', usuario)
+        .select('usuario');
+
+      if (!updErr && updatedRows && updatedRows.length > 0) {
+        await revokeUserSessions(usuario);
+        return { deleted: true, storageMode: 'supabase' };
+      }
+
+      if (delErr && !isMissingTableError(delErr)) {
+        throw new Error(delErr.message || 'Erro ao excluir usuário no Supabase.');
+      }
+      if (updErr && !isMissingTableError(updErr)) {
+        throw new Error(updErr.message || 'Erro ao desativar usuário no Supabase.');
+      }
+    } catch (err) {
+      if (err instanceof Error && !err.message.toLowerCase().includes('does not exist')) {
+        throw err;
+      }
+    }
+  }
+
+  const localUsers = readLocalUsers();
+  const filtrados = localUsers.filter((u) => u.usuario !== usuario);
+  if (filtrados.length === localUsers.length) {
+    return { deleted: false, storageMode: 'local' };
+  }
+  writeLocalUsers(filtrados);
+  await revokeUserSessions(usuario);
+  return { deleted: true, storageMode: 'local' };
 }
 
 export function getEnvAdminConfig(): { username: string; password: string } | null {
@@ -289,7 +621,7 @@ export async function isAdminConfigured(): Promise<{ configured: boolean; storag
     return { configured: true, storageMode };
   }
   return {
-    configured: users.some((u) => u.role === 'admin' || u.usuario === 'admin'),
+    configured: users.some((u) => u.role === 'administrador' || u.usuario === 'admin'),
     storageMode,
   };
 }
@@ -297,7 +629,9 @@ export async function isAdminConfigured(): Promise<{ configured: boolean; storag
 export type SessionPayload = {
   usuario: string;
   nome: string;
-  role: 'admin' | 'operador';
+  role: CargoUsuario;
+  iat?: number;
+  ver?: string;
   exp: number;
 };
 
@@ -305,7 +639,7 @@ type StoredSessionRecord = {
   tokenHash: string;
   usuario: string;
   nome: string;
-  role: 'admin' | 'operador';
+  role: CargoUsuario;
   exp: number;
 };
 
@@ -320,9 +654,15 @@ function readLocalSessions(): StoredSessionRecord[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const now = Date.now();
-    return (parsed as StoredSessionRecord[]).filter(
-      (s) => s && typeof s.tokenHash === 'string' && typeof s.exp === 'number' && s.exp > now
-    );
+    return (parsed as Array<Record<string, unknown>>)
+      .filter((s) => s && typeof s.tokenHash === 'string' && typeof s.exp === 'number' && s.exp > now)
+      .map((s) => ({
+        tokenHash: String(s.tokenHash),
+        usuario: String(s.usuario || ''),
+        nome: String(s.nome || ''),
+        role: normalizarCargo(typeof s.role === 'string' ? s.role : undefined),
+        exp: Number(s.exp),
+      }));
   } catch {
     return [];
   }
@@ -339,10 +679,12 @@ function writeLocalSessions(sessions: StoredSessionRecord[]): void {
   }
 }
 
-export function createSessionToken(payload: Omit<SessionPayload, 'exp'>): string {
+export function createSessionToken(payload: Omit<SessionPayload, 'exp' | 'iat'>): string {
+  const now = Date.now();
   const fullPayload: SessionPayload = {
     ...payload,
-    exp: Date.now() + SESSION_TTL_MS,
+    iat: now,
+    exp: now + SESSION_TTL_MS,
   };
   const body = Buffer.from(JSON.stringify(fullPayload)).toString('base64url');
   const sig = crypto.createHmac('sha256', getSigningKey()).update(body).digest('base64url');
@@ -351,7 +693,7 @@ export function createSessionToken(payload: Omit<SessionPayload, 'exp'>): string
 
 export async function saveSessionRecord(
   token: string,
-  payload: Omit<SessionPayload, 'exp'>
+  payload: Omit<SessionPayload, 'exp' | 'iat'>
 ): Promise<void> {
   const tokenHash = hashSessionToken(token);
   const exp = Date.now() + SESSION_TTL_MS;
@@ -370,7 +712,7 @@ export async function saveSessionRecord(
   const sb = getServerSupabase();
   if (sb) {
     try {
-      const { error } = await sb.from('sessoes').upsert(
+      let upsertRes = await sb.from('sessoes').upsert(
         [
           {
             token_hash: tokenHash,
@@ -382,8 +724,24 @@ export async function saveSessionRecord(
         ],
         { onConflict: 'token_hash' }
       );
-      if (error && !isMissingTableError(error)) {
-        console.warn('Erro ao salvar sessão no Supabase:', error.message);
+
+      if (upsertRes.error?.code === '23514' && payload.role !== 'cliente') {
+        upsertRes = await sb.from('sessoes').upsert(
+          [
+            {
+              token_hash: tokenHash,
+              usuario: payload.usuario,
+              nome: payload.nome,
+              role: cargoParaDbFallback(payload.role),
+              expira_em: new Date(exp).toISOString(),
+            },
+          ],
+          { onConflict: 'token_hash' }
+        );
+      }
+
+      if (upsertRes.error && !isMissingTableError(upsertRes.error)) {
+        console.warn('Erro ao salvar sessão no Supabase:', upsertRes.error.message);
       }
     } catch {
       // fallback já salvo localmente
@@ -439,6 +797,32 @@ export async function revokeSessionRecord(token: string | undefined | null): Pro
   }
 }
 
+export async function revokeUserSessions(usuario: string): Promise<void> {
+  const norm = normalizarUsuario(usuario);
+  if (!norm) return;
+  getRevokedUsersMap().set(norm, Date.now());
+
+  const localSessions = readLocalSessions();
+  for (const s of localSessions) {
+    if (s.usuario === norm) {
+      getRevokedHashesSet().add(s.tokenHash);
+    }
+  }
+  writeLocalSessions(localSessions.filter((s) => s.usuario !== norm));
+
+  const sb = getServerSupabase();
+  if (sb) {
+    try {
+      const { error } = await sb.from('sessoes').delete().eq('usuario', norm);
+      if (error && !isMissingTableError(error)) {
+        console.warn('Erro ao revogar sessões do usuário no Supabase:', error.message);
+      }
+    } catch {
+      // ignora erro de rede
+    }
+  }
+}
+
 async function findPersistedSession(token: string): Promise<SessionPayload | null> {
   const tokenHash = hashSessionToken(token);
   if (getRevokedHashesSet().has(tokenHash)) return null;
@@ -458,7 +842,7 @@ async function findPersistedSession(token: string): Promise<SessionPayload | nul
           return {
             usuario: data.usuario as string,
             nome: data.nome as string,
-            role: data.role === 'admin' ? 'admin' : 'operador',
+            role: normalizarCargo(data.role as string),
             exp: expMs,
           };
         }
@@ -497,7 +881,14 @@ export function verifySessionToken(token: string | undefined | null): SessionPay
     if (!parsed.usuario || typeof parsed.exp !== 'number' || Date.now() > parsed.exp) {
       return null;
     }
-    return parsed;
+    const revokedAt = getRevokedUsersMap().get(parsed.usuario);
+    if (revokedAt && (!parsed.iat || parsed.iat < revokedAt)) {
+      return null;
+    }
+    return {
+      ...parsed,
+      role: normalizarCargo(parsed.role),
+    };
   } catch {
     return null;
   }
@@ -518,6 +909,36 @@ export function getSessionFromRequest(req: NextRequest): SessionPayload | null {
   return verifySessionToken(token);
 }
 
+async function verifyActiveUserRecord(
+  usuario: string,
+  tokenVersion?: string
+): Promise<
+  | { status: 'active'; nome: string; role: CargoUsuario }
+  | { status: 'inactive' }
+  | { status: 'unknown' }
+> {
+  const envAdmin = getEnvAdminConfig();
+  if (envAdmin && envAdmin.username === usuario) {
+    return { status: 'active', nome: 'Administrador', role: 'administrador' };
+  }
+
+  const { user, queryFailed } = await findStoredUser(usuario);
+  if (queryFailed) {
+    return { status: 'unknown' };
+  }
+  if (!user) {
+    return { status: 'inactive' };
+  }
+  if (tokenVersion && computePasswordVersion(user.hash) !== tokenVersion) {
+    return { status: 'inactive' };
+  }
+  return {
+    status: 'active',
+    nome: user.nome || user.usuario,
+    role: user.role,
+  };
+}
+
 export async function resolveSessionFromRequest(
   req: NextRequest
 ): Promise<{ session: SessionPayload; token: string } | null> {
@@ -526,23 +947,40 @@ export async function resolveSessionFromRequest(
     authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
   const cookieToken = req.cookies.get(SESSION_COOKIE_NAME)?.value || null;
 
-  const candidatos = [bearerToken, cookieToken].filter(
-    (t): t is string => Boolean(t)
-  );
+  const candidatos = [bearerToken, cookieToken].filter((t): t is string => Boolean(t));
 
   for (const token of candidatos) {
     const tokenHash = hashSessionToken(token);
     if (getRevokedHashesSet().has(tokenHash)) continue;
 
+    const signed = verifySessionToken(token);
     const stored = await findPersistedSession(token);
-    if (stored) {
-      return { session: stored, token };
+    const baseSession = stored || signed;
+    if (!baseSession) continue;
+
+    const revokedAt = getRevokedUsersMap().get(baseSession.usuario);
+    if (revokedAt && (!signed?.iat || signed.iat < revokedAt)) {
+      continue;
     }
 
-    const signed = verifySessionToken(token);
-    if (signed) {
-      return { session: signed, token };
+    const activeCheck = await verifyActiveUserRecord(baseSession.usuario, signed?.ver);
+    if (activeCheck.status === 'inactive') {
+      await revokeSessionRecord(token);
+      continue;
     }
+
+    if (activeCheck.status === 'active') {
+      return {
+        session: {
+          ...baseSession,
+          nome: activeCheck.nome,
+          role: activeCheck.role,
+        },
+        token,
+      };
+    }
+
+    return { session: baseSession, token };
   }
 
   return null;

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Lote, buildLink } from '@/lib/lote';
 import { getLote, carregarConfigNuvem, obterSessaoUsuario } from '@/lib/db';
-import { gerarImagem, copiarTextoEImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
+import { gerarImagem, copiarImagem, baixarImagem } from '@/lib/exportar';
 import CartaoPreviewResponsivo from '@/components/CartaoPreviewResponsivo';
 import { useToast } from '@/components/ToastProvider';
 import { carregarConfig } from '@/lib/config';
@@ -67,30 +67,20 @@ export default function LeituraLotePage() {
     }
   };
 
-  const handleCopiarTextoEImg = async () => {
+  const handleCopiarImg = async () => {
     if (!lote) return;
     setProcessando(true);
     try {
       const el = document.getElementById('cartao-lote-exportavel');
       if (!el) throw new Error('Elemento do cartão não encontrado');
       const blob = await gerarImagem(el);
-      await copiarTextoEImagem(lote, blob);
-      mostrarPopup({ tipo: 'sucesso', mensagem: 'Texto e imagem copiados com sucesso!' });
+      await copiarImagem(blob);
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Imagem copiada com sucesso!' });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao copiar imagem. Copiado apenas texto.';
+      const msg = err instanceof Error ? err.message : 'Erro ao copiar imagem.';
       mostrarPopup({ tipo: 'erro', mensagem: msg });
     } finally {
       setProcessando(false);
-    }
-  };
-
-  const handleCopiarApenasTexto = async () => {
-    if (!lote) return;
-    try {
-      await copiarTexto(lote);
-      mostrarPopup({ tipo: 'sucesso', mensagem: 'Texto e link copiados!' });
-    } catch {
-      mostrarPopup({ tipo: 'erro', mensagem: 'Erro ao copiar texto.' });
     }
   };
 
@@ -180,13 +170,13 @@ export default function LeituraLotePage() {
               className="w-full py-2.5 px-4 bg-[#505859] hover:bg-[#3E4546] hover:scale-105 focus:scale-105 text-white text-xs sm:text-sm font-semibold rounded-xl transition transform flex items-center justify-center gap-2 cursor-pointer shadow-sm"
             >
               <LinkIcon className="w-4 h-4 text-[#CDA9A8] shrink-0" />
-              <span>Copiar apenas o link</span>
+              <span>Copiar link</span>
             </button>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={handleCopiarTextoEImg}
+                onClick={handleCopiarImg}
                 disabled={processando}
                 className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] hover:scale-105 focus:scale-105 disabled:opacity-50 text-[#505859] border border-[#E5DFDE] font-semibold rounded-xl text-xs transition transform flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
               >

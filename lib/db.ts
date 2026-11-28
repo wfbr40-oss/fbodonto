@@ -7,11 +7,21 @@ const MOCK_LOTES_KEY = 'fb_odonto_mock_lotes_v1';
 // Token mantido exclusivamente em memória para complementar o cookie HttpOnly no preview/iframe
 let memoryAuthToken: string | null = null;
 
+export type CargoUsuario = 'administrador' | 'usuario' | 'cliente';
+
+export function normalizarCargoCliente(role?: string | null): CargoUsuario {
+  const limpo = (role || '').trim().toLowerCase();
+  if (limpo === 'admin' || limpo === 'administrador') return 'administrador';
+  if (limpo === 'cliente') return 'cliente';
+  return 'usuario';
+}
+
 export type UsuarioRegistrado = {
   usuario: string;
   nome: string;
-  role?: 'admin' | 'operador';
+  role: CargoUsuario;
   criadoEm: string;
+  protegido?: boolean;
 };
 
 type ConfigRow = {
@@ -361,7 +371,10 @@ export async function listarRecentes(): Promise<Lote[]> {
   }
 }
 
-export async function configurarAdminInicial(usuario: string, senha: string): Promise<string> {
+export async function configurarAdminInicial(
+  usuario: string,
+  senha: string
+): Promise<{ usuario: string; usuarioLogin: string; role: CargoUsuario }> {
   const res = await fetch('/api/auth/setup', {
     method: 'POST',
     headers: authHeaders(true),
@@ -375,10 +388,17 @@ export async function configurarAdminInicial(usuario: string, senha: string): Pr
   }
 
   memoryAuthToken = payload.token || null;
-  return payload.usuario || usuario;
+  return {
+    usuario: payload.usuario || usuario,
+    usuarioLogin: payload.usuarioLogin || usuario,
+    role: normalizarCargoCliente(payload.role || 'administrador'),
+  };
 }
 
-export async function login(usuario: string, senha: string): Promise<string> {
+export async function login(
+  usuario: string,
+  senha: string
+): Promise<{ usuario: string; usuarioLogin: string; role: CargoUsuario }> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: authHeaders(true),
@@ -392,13 +412,18 @@ export async function login(usuario: string, senha: string): Promise<string> {
   }
 
   memoryAuthToken = payload.token || null;
-  return payload.usuario || usuario;
+  return {
+    usuario: payload.usuario || usuario,
+    usuarioLogin: payload.usuarioLogin || usuario,
+    role: normalizarCargoCliente(payload.role),
+  };
 }
 
 export async function cadastrarUsuario(params: {
   usuario: string;
   nome?: string;
   senha?: string;
+  role?: CargoUsuario;
 }): Promise<{ usuario: UsuarioRegistrado; storageMode: 'supabase' | 'local' }> {
   const res = await fetch('/api/auth/usuarios', {
     method: 'POST',
@@ -413,7 +438,63 @@ export async function cadastrarUsuario(params: {
   }
 
   return {
-    usuario: payload.usuario as UsuarioRegistrado,
+    usuario: {
+      ...(payload.usuario as UsuarioRegistrado),
+      role: normalizarCargoCliente(payload.usuario?.role),
+    },
+    storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
+  };
+}
+
+export async function atualizarUsuario(params: {
+  usuarioAtual: string;
+  novoUsuario?: string;
+  nome?: string;
+  role?: CargoUsuario;
+  novaSenha?: string;
+}): Promise<{
+  usuario: UsuarioRegistrado;
+  storageMode: 'supabase' | 'local';
+  credentialsChanged: boolean;
+}> {
+  const res = await fetch('/api/auth/usuarios', {
+    method: 'PATCH',
+    headers: authHeaders(true),
+    credentials: 'include',
+    body: JSON.stringify(params),
+  });
+
+  const payload = await res.json();
+  if (!res.ok) {
+    throw new Error(payload.error || 'Erro ao atualizar usuário.');
+  }
+
+  return {
+    usuario: {
+      ...(payload.usuario as UsuarioRegistrado),
+      role: normalizarCargoCliente(payload.usuario?.role),
+    },
+    storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
+    credentialsChanged: Boolean(payload.credentialsChanged),
+  };
+}
+
+export async function excluirUsuario(
+  usuario: string
+): Promise<{ storageMode: 'supabase' | 'local' }> {
+  const res = await fetch('/api/auth/usuarios', {
+    method: 'DELETE',
+    headers: authHeaders(true),
+    credentials: 'include',
+    body: JSON.stringify({ usuario }),
+  });
+
+  const payload = await res.json();
+  if (!res.ok) {
+    throw new Error(payload.error || 'Erro ao excluir usuário.');
+  }
+
+  return {
     storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
   };
 }
@@ -430,8 +511,12 @@ export async function listarUsuarios(): Promise<{
 
   if (!res.ok) return { usuarios: [], storageMode: 'local' };
   const payload = await res.json();
+  const lista = ((payload.usuarios as UsuarioRegistrado[]) || []).map((u) => ({
+    ...u,
+    role: normalizarCargoCliente(u.role),
+  }));
   return {
-    usuarios: (payload.usuarios as UsuarioRegistrado[]) || [],
+    usuarios: lista,
     storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
   };
 }
@@ -452,6 +537,7 @@ export async function obterSessaoUsuario(): Promise<{
   autenticado: boolean;
   usuario: string | null;
   usuarioLogin: string | null;
+  role: CargoUsuario | null;
   adminConfigured: boolean;
   storageMode: 'supabase' | 'local';
 }> {
@@ -467,6 +553,7 @@ export async function obterSessaoUsuario(): Promise<{
         autenticado: false,
         usuario: null,
         usuarioLogin: null,
+        role: null,
         adminConfigured: true,
         storageMode: 'local',
       };
@@ -482,6 +569,7 @@ export async function obterSessaoUsuario(): Promise<{
       autenticado,
       usuario: payload.usuario || null,
       usuarioLogin: payload.usuarioLogin || null,
+      role: autenticado ? normalizarCargoCliente(payload.role) : null,
       adminConfigured: Boolean(payload.adminConfigured),
       storageMode: payload.storageMode === 'supabase' ? 'supabase' : 'local',
     };
@@ -490,6 +578,7 @@ export async function obterSessaoUsuario(): Promise<{
       autenticado: false,
       usuario: null,
       usuarioLogin: null,
+      role: null,
       adminConfigured: true,
       storageMode: 'local',
     };

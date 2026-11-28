@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   attachSessionCookie,
+  computePasswordVersion,
   createSessionToken,
   createStoredUser,
   hashPassword,
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     const result = await createStoredUser({
       usuario: usuarioLimpo,
       nome: nomeLimpo,
-      role: 'admin',
+      role: 'administrador',
       salt,
       hash,
     });
@@ -60,7 +61,8 @@ export async function POST(req: NextRequest) {
   const payloadSessao = {
     usuario: usuarioLimpo,
     nome: nomeLimpo,
-    role: 'admin' as const,
+    role: 'administrador' as const,
+    ver: computePasswordVersion(hash),
   };
   const token = createSessionToken(payloadSessao);
   await saveSessionRecord(token, payloadSessao);
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest) {
     autenticado: true,
     usuario: nomeLimpo,
     usuarioLogin: usuarioLimpo,
-    role: 'admin',
+    role: 'administrador',
     storageMode,
     token,
   });

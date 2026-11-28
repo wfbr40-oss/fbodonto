@@ -2,9 +2,9 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import jsQR from 'jsqr';
-import { Lote } from '@/lib/lote';
+import { Lote, buildLink } from '@/lib/lote';
 import { getLote } from '@/lib/db';
-import { gerarImagem, copiarTextoEImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
+import { gerarImagem, copiarImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
 import CartaoPreviewResponsivo from '@/components/CartaoPreviewResponsivo';
 import ModalCartaoLote from '@/components/ModalCartaoLote';
 import { useToast } from '@/components/ToastProvider';
@@ -18,11 +18,13 @@ import {
   Printer,
   RotateCcw,
   Eye,
+  Link as LinkIcon,
 } from 'lucide-react';
 
 type LeitorQrCodeProps = {
   nomeConsultorio: string;
-  onReimprimir: (lote: Lote) => void;
+  onReimprimir?: (lote: Lote) => void;
+  permitirReimpressao?: boolean;
 };
 
 function extrairCodigoLote(texto: string): string | null {
@@ -32,7 +34,12 @@ function extrairCodigoLote(texto: string): string | null {
   return apenasDigitos.length === 10 ? apenasDigitos : null;
 }
 
-export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQrCodeProps) {
+export default function LeitorQrCode({
+  nomeConsultorio,
+  onReimprimir,
+  permitirReimpressao = true,
+}: LeitorQrCodeProps) {
+  const podeReimprimir = Boolean(permitirReimpressao && onReimprimir);
   const [cameraAtiva, setCameraAtiva] = useState(false);
   const [codigoManual, setCodigoManual] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -218,15 +225,25 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
     void buscarLotePorTexto(codigoManual.trim());
   };
 
-  const handleCopiarTextoEImg = async () => {
+  const handleCopiarLink = async () => {
+    if (!loteEncontrado) return;
+    try {
+      await navigator.clipboard.writeText(buildLink(loteEncontrado.codigo));
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Link público copiado!' });
+    } catch {
+      mostrarPopup({ tipo: 'erro', mensagem: 'Erro ao copiar link.' });
+    }
+  };
+
+  const handleCopiarImg = async () => {
     if (!loteEncontrado) return;
     setProcessandoExport(true);
     try {
       const el = document.getElementById('cartao-lote-exportavel');
       if (!el) throw new Error('Cartão não encontrado');
       const blob = await gerarImagem(el);
-      await copiarTextoEImagem(loteEncontrado, blob);
-      mostrarPopup({ tipo: 'sucesso', mensagem: 'Texto e imagem copiados com sucesso!' });
+      await copiarImagem(blob);
+      mostrarPopup({ tipo: 'sucesso', mensagem: 'Imagem copiada com sucesso!' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao copiar imagem.';
       mostrarPopup({ tipo: 'erro', mensagem: msg });
@@ -294,15 +311,24 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
             <div className="space-y-2 pt-2">
               <button
                 type="button"
-                onClick={handleCopiarTextoEImg}
-                disabled={processandoExport}
-                className="w-full py-2.5 px-4 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                onClick={handleCopiarLink}
+                className="w-full py-2.5 px-4 bg-[#505859] hover:bg-[#3E4546] text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Copy className="w-4 h-4 text-[#CDA9A8]" />
-                <span>{processandoExport ? 'Processando...' : 'Copiar texto e imagem para prontuário'}</span>
+                <LinkIcon className="w-4 h-4 text-[#CDA9A8]" />
+                <span>Copiar link</span>
               </button>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className={`grid grid-cols-2 ${podeReimprimir ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-2`}>
+                <button
+                  type="button"
+                  onClick={handleCopiarImg}
+                  disabled={processandoExport}
+                  className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] disabled:opacity-50 text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{processandoExport ? 'Processando...' : 'Copiar imagem'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleCopiarTexto}
@@ -316,20 +342,22 @@ export default function LeitorQrCode({ nomeConsultorio, onReimprimir }: LeitorQr
                   type="button"
                   onClick={handleBaixarImg}
                   disabled={processandoExport}
-                  className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] disabled:opacity-50 text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Baixar imagem</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => onReimprimir(loteEncontrado)}
-                  className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Reimprimir</span>
-                </button>
+                {podeReimprimir && onReimprimir && (
+                  <button
+                    type="button"
+                    onClick={() => onReimprimir(loteEncontrado)}
+                    className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Reimprimir</span>
+                  </button>
+                )}
               </div>
 
               <button

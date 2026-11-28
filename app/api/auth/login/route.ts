@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   attachSessionCookie,
+  computePasswordVersion,
   createSessionToken,
   findStoredUser,
   getEnvAdminConfig,
@@ -38,7 +39,8 @@ export async function POST(req: NextRequest) {
     const payloadSessao = {
       usuario: envAdmin.username,
       nome: 'Administrador',
-      role: 'admin' as const,
+      role: 'administrador' as const,
+      ver: 'env',
     };
     const token = createSessionToken(payloadSessao);
     await saveSessionRecord(token, payloadSessao);
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
       autenticado: true,
       usuario: 'Administrador',
       usuarioLogin: envAdmin.username,
-      role: 'admin',
+      role: 'administrador',
       token,
     });
     attachSessionCookie(res, token);
@@ -64,6 +66,7 @@ export async function POST(req: NextRequest) {
     usuario: encontrado.usuario,
     nome: nomeExibicao,
     role: encontrado.role,
+    ver: computePasswordVersion(encontrado.hash),
   };
   const token = createSessionToken(payloadSessao);
   await saveSessionRecord(token, payloadSessao);

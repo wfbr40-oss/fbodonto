@@ -30,11 +30,29 @@ create policy "Permitir atualização de lotes"
 create table if not exists public.usuarios (
   usuario text primary key check (char_length(usuario) >= 2),
   nome text not null,
-  role text not null default 'operador' check (role in ('admin', 'operador')),
+  role text not null default 'usuario' check (role in ('admin', 'operador', 'administrador', 'usuario', 'cliente')),
   salt text not null,
   hash text not null,
   criado_em timestamptz not null default now()
 );
+
+-- Atualiza constraint de cargo caso a tabela usuarios já exista
+do $$
+declare
+  c_name text;
+begin
+  select conname into c_name
+  from pg_constraint
+  where conrelid = 'public.usuarios'::regclass
+    and contype = 'c'
+    and pg_get_constraintdef(oid) ilike '%role%';
+  if c_name is not null then
+    execute format('alter table public.usuarios drop constraint %I', c_name);
+  end if;
+  alter table public.usuarios
+    add constraint usuarios_role_check check (role in ('admin', 'operador', 'administrador', 'usuario', 'cliente'));
+exception when undefined_table then null;
+end $$;
 
 -- Habilitar RLS para usuários
 alter table public.usuarios enable row level security;
@@ -52,6 +70,11 @@ create policy "Permitir insercao de usuarios"
 drop policy if exists "Permitir atualizacao de usuarios" on public.usuarios;
 create policy "Permitir atualizacao de usuarios"
   on public.usuarios for update
+  using (true);
+
+drop policy if exists "Permitir exclusao de usuarios" on public.usuarios;
+create policy "Permitir exclusao de usuarios"
+  on public.usuarios for delete
   using (true);
 
 -- Tabela de configurações do consultório, etiqueta, validade e regra de numeração
@@ -109,10 +132,27 @@ create table if not exists public.sessoes (
   token_hash text primary key,
   usuario text not null,
   nome text not null,
-  role text not null default 'operador' check (role in ('admin', 'operador')),
+  role text not null default 'usuario' check (role in ('admin', 'operador', 'administrador', 'usuario', 'cliente')),
   expira_em timestamptz not null,
   criado_em timestamptz not null default now()
 );
+
+do $$
+declare
+  c_name text;
+begin
+  select conname into c_name
+  from pg_constraint
+  where conrelid = 'public.sessoes'::regclass
+    and contype = 'c'
+    and pg_get_constraintdef(oid) ilike '%role%';
+  if c_name is not null then
+    execute format('alter table public.sessoes drop constraint %I', c_name);
+  end if;
+  alter table public.sessoes
+    add constraint sessoes_role_check check (role in ('admin', 'operador', 'administrador', 'usuario', 'cliente'));
+exception when undefined_table then null;
+end $$;
 
 alter table public.sessoes enable row level security;
 

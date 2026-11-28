@@ -1,27 +1,6 @@
 import { toPng, toJpeg } from 'html-to-image';
 import { Lote, buildLink, formatDataBR } from './lote';
 
-function escapeHtml(valor: string): string {
-  return valor
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function sanitizarUrlHttp(url: string): string {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-      return parsed.toString();
-    }
-  } catch {
-    // URL inválida
-  }
-  return '#';
-}
-
 export async function gerarImagem(el: HTMLElement): Promise<Blob> {
   let dataUrl = await toPng(el, { pixelRatio: 2, cacheBust: true });
   let res = await fetch(dataUrl);
@@ -48,56 +27,56 @@ export function textoDoLote(l: Lote): string {
   ].join('\n');
 }
 
-export async function copiarTextoEImagem(l: Lote, imagem: Blob): Promise<void> {
-  const texto = textoDoLote(l);
-  const link = sanitizarUrlHttp(buildLink(l.codigo));
-
-  const reader = new FileReader();
-  const imgDataUrl = await new Promise<string>((resolve) => {
-    reader.onload = () => resolve(reader.result as string);
-    reader.readAsDataURL(imagem);
-  });
-
-  const codigoSeguro = escapeHtml(l.codigo);
-  const itemSeguro = l.item?.trim() ? escapeHtml(l.item.trim()) : '';
-  const esterilizacaoSegura = escapeHtml(formatDataBR(l.esterilizacao));
-  const validadeSegura = escapeHtml(formatDataBR(l.validade));
-  const responsavelSeguro = escapeHtml(l.responsavel || '');
-  const linkSeguro = escapeHtml(link);
-  const imgSrcSeguro = imgDataUrl.startsWith('data:image/') ? escapeHtml(imgDataUrl) : '';
-
-  const itemHtml = itemSeguro ? `<p><b>Item:</b> ${itemSeguro}</p>` : '';
-  const imgHtml = imgSrcSeguro
-    ? `<img src="${imgSrcSeguro}" alt="Cartão do Lote ${codigoSeguro}" style="max-width: 100%; height: auto;" />`
-    : '';
-
-  const htmlContent = `<div>
-    <p><b>Lote:</b> ${codigoSeguro}</p>
-    ${itemHtml}
-    <p><b>Esterilização:</b> ${esterilizacaoSegura}</p>
-    <p><b>Validade:</b> ${validadeSegura}</p>
-    <p><b>Responsável:</b> ${responsavelSeguro}</p>
-    <p><b>Link:</b> <a href="${linkSeguro}">${linkSeguro}</a></p>
-    <br/>
-    ${imgHtml}
-  </div>`;
-
-  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
-    try {
-      const clipboardItem = new ClipboardItem({
-        'text/plain': new Blob([texto], { type: 'text/plain' }),
-        'text/html': new Blob([htmlContent], { type: 'text/html' }),
-        'image/png': imagem.type === 'image/png' ? imagem : new Blob([imagem], { type: 'image/png' })
-      });
-      await navigator.clipboard.write([clipboardItem]);
-      return;
-    } catch (err) {
-      console.warn("ClipboardItem com imagem falhou, tentando fallback de texto:", err);
-    }
+async function garantirPngBlob(imagem: Blob): Promise<Blob> {
+  if (imagem.type === 'image/png') {
+    return imagem;
   }
 
-  await navigator.clipboard.writeText(texto);
-  throw new Error("Seu navegador não suporta colar imagem diretamente no clipboard. Apenas o texto foi copiado.");
+  const url = URL.createObjectURL(imagem);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Falha ao carregar imagem para conversão.'));
+      el.src = url;
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Contexto gráfico indisponível.');
+    }
+    ctx.drawImage(img, 0, 0);
+
+    const pngBlob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((b) => resolve(b), 'image/png');
+    });
+    if (!pngBlob) {
+      throw new Error('Não foi possível converter a imagem para PNG.');
+    }
+    return pngBlob;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export async function copiarImagem(imagem: Blob): Promise<void> {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard || !navigator.clipboard.write) {
+    throw new Error('Seu navegador não suporta copiar a imagem diretamente. Use o botão Baixar imagem.');
+  }
+
+  try {
+    const pngBlob = await garantirPngBlob(imagem);
+    const clipboardItem = new ClipboardItem({
+      'image/png': pngBlob,
+    });
+    await navigator.clipboard.write([clipboardItem]);
+  } catch (err) {
+    console.warn('Falha ao copiar imagem para o clipboard:', err);
+    throw new Error('Seu navegador não suporta copiar a imagem diretamente. Use o botão Baixar imagem.');
+  }
 }
 
 export async function copiarTexto(l: Lote): Promise<void> {

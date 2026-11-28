@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Lote, buildLink } from '@/lib/lote';
-import { gerarImagem, copiarTextoEImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
+import { gerarImagem, copiarImagem, copiarTexto, baixarImagem } from '@/lib/exportar';
 import CartaoPreviewResponsivo from '@/components/CartaoPreviewResponsivo';
 import { useToast } from '@/components/ToastProvider';
 import { X, Copy, Download, Link as LinkIcon } from 'lucide-react';
@@ -23,16 +23,16 @@ export default function ModalCartaoLote({
   const [processando, setProcessando] = useState(false);
   const { mostrarPopup } = useToast();
 
-  const handleCopiarTextoEImg = async () => {
+  const handleCopiarImg = async () => {
     setProcessando(true);
     try {
       const el = document.getElementById(MODAL_CARD_ID);
       if (!el) throw new Error('Cartão não encontrado');
       const blob = await gerarImagem(el);
-      await copiarTextoEImagem(lote, blob);
+      await copiarImagem(blob);
       mostrarPopup({
         tipo: 'sucesso',
-        mensagem: 'Texto e imagem copiados com sucesso!',
+        mensagem: 'Imagem copiada com sucesso!',
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao copiar imagem.';
@@ -100,7 +100,7 @@ export default function ModalCartaoLote({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 bg-[#3E4546]/55 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-6 overflow-y-auto no-print"
+      className="fixed inset-0 z-[60] bg-[#3E4546]/55 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-6 overflow-y-auto no-print"
       onClick={onClose}
     >
       <div
@@ -136,15 +136,24 @@ export default function ModalCartaoLote({
         <div className="space-y-2 pt-1">
           <button
             type="button"
-            onClick={handleCopiarTextoEImg}
-            disabled={processando}
-            className="w-full py-2.5 px-4 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
+            onClick={handleCopiarLink}
+            className="w-full py-2.5 px-4 bg-[#505859] hover:bg-[#3E4546] text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Copy className="w-4 h-4 text-[#CDA9A8]" />
-            <span>{processando ? 'Processando...' : 'Copiar texto e imagem juntos'}</span>
+            <LinkIcon className="w-4 h-4 text-[#CDA9A8]" />
+            <span>Copiar link</span>
           </button>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={handleCopiarImg}
+              disabled={processando}
+              className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] disabled:opacity-50 text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>{processando ? 'Processando...' : 'Copiar imagem'}</span>
+            </button>
+
             <button
               type="button"
               onClick={handleCopiarTexto}
@@ -156,18 +165,9 @@ export default function ModalCartaoLote({
 
             <button
               type="button"
-              onClick={handleCopiarLink}
-              className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <LinkIcon className="w-3.5 h-3.5" />
-              <span>Copiar link</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleBaixarImg}
               disabled={processando}
-              className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
+              className="py-2.5 px-3 bg-[#F4EFEF] hover:bg-[#EAE1E0] disabled:opacity-50 text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Baixar imagem</span>

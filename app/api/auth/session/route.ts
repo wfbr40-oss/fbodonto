@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   attachSessionCookie,
+  clearSessionCookie,
+  extractTokenFromRequest,
   isAdminConfigured,
   resolveSessionFromRequest,
   touchSessionRecord,
@@ -13,10 +15,11 @@ export async function GET(req: NextRequest) {
   const { configured: adminConfigured, storageMode } = await isAdminConfigured();
 
   if (!resolvido) {
-    return NextResponse.json(
+    const res = NextResponse.json(
       {
         autenticado: false,
         usuario: null,
+        usuarioLogin: null,
         role: null,
         adminConfigured,
         storageMode,
@@ -27,6 +30,10 @@ export async function GET(req: NextRequest) {
         },
       }
     );
+    if (extractTokenFromRequest(req)) {
+      clearSessionCookie(res);
+    }
+    return res;
   }
 
   const { session, token } = resolvido;
