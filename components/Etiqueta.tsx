@@ -20,7 +20,9 @@ export default function Etiqueta({ lote, larguraMm = 50, alturaMm = 30 }: Etique
       .catch((err) => console.error("Erro ao gerar QR Code para etiqueta:", err));
   }, [lote.codigo]);
 
-  const qrSizeMm = Math.max(15, Math.min(alturaMm - 4, Math.floor(larguraMm * 0.4)));
+  const qrSizeMm = Math.max(14, Math.min(alturaMm - 3, Math.floor(larguraMm * 0.36)));
+  const nomeItem = lote.item?.trim() || '';
+  const nomeResponsavel = lote.responsavel?.trim() || '';
 
   return (
     <div
@@ -28,10 +30,35 @@ export default function Etiqueta({ lote, larguraMm = 50, alturaMm = 30 }: Etique
       style={{
         width: `${larguraMm}mm`,
         height: `${alturaMm}mm`,
-        padding: '1.5mm',
-        gap: '1.5mm',
+        padding: '1.2mm',
+        gap: '1.2mm',
       }}
     >
+      <div
+        className="flex-1 min-w-0 flex flex-col justify-center h-full overflow-hidden leading-[1.15] gap-[0.4mm] tracking-tight"
+        style={{ fontSize: 'calc(6.5pt + 3px)' }}
+      >
+        <div className="font-bold text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
+          LOTE: <span className="font-mono">{lote.codigo}</span>
+        </div>
+        {nomeItem && (
+          <div className="font-semibold text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
+            ITEM: {nomeItem}
+          </div>
+        )}
+        <div className="text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
+          PROC: {formatDataBR(lote.esterilizacao)}
+        </div>
+        <div className="font-semibold text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
+          VAL: {formatDataBR(lote.validade)}
+        </div>
+        {nomeResponsavel && (
+          <div className="text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
+            RESP: {nomeResponsavel}
+          </div>
+        )}
+      </div>
+
       <div
         className="flex-shrink-0 flex items-center justify-center"
         style={{ width: `${qrSizeMm}mm`, height: `${qrSizeMm}mm` }}
@@ -41,18 +68,6 @@ export default function Etiqueta({ lote, larguraMm = 50, alturaMm = 30 }: Etique
         ) : (
           <div className="w-full h-full bg-slate-200 animate-pulse" />
         )}
-      </div>
-
-      <div className="flex-1 min-w-0 flex flex-col justify-center h-full overflow-hidden leading-[1.2] gap-[0.8mm]">
-        <div className="text-[6.5pt] font-bold text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
-          LOTE: <span className="font-mono">{lote.codigo}</span>
-        </div>
-        <div className="text-[6.5pt] text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
-          PROC: {formatDataBR(lote.esterilizacao)}
-        </div>
-        <div className="text-[6.5pt] font-semibold text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
-          VAL: {formatDataBR(lote.validade)}
-        </div>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Lote,
   TurnoLote,
@@ -108,6 +109,12 @@ export default function CadastroPage() {
   const avisoSetupMostradoRef = useRef(false);
   const avisoTabelaConfigMostradoRef = useRef(false);
   const avisoTabelaUsersMostradoRef = useRef(false);
+  const touchSwipeRef = useRef<{
+    x: number;
+    y: number;
+    time: number;
+    ignorar: boolean;
+  } | null>(null);
 
   const pref = prefixoDia(esterilizacao);
   const lotesDoDia = historico.filter((l) => l.codigo.startsWith(pref));
@@ -300,6 +307,84 @@ export default function CadastroPage() {
       setLoteCriado(null);
     }
     setSidebarMobile(false);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1 || loteModal) {
+      touchSwipeRef.current = null;
+      return;
+    }
+
+    const alvo = e.target as HTMLElement | null;
+    let ignorar = false;
+
+    if (alvo) {
+      const tag = alvo.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        ignorar = true;
+      } else {
+        let atual: HTMLElement | null = alvo;
+        while (atual && atual !== e.currentTarget) {
+          if (atual.scrollWidth > atual.clientWidth + 4) {
+            const overflowX = window.getComputedStyle(atual).overflowX;
+            if (overflowX === 'auto' || overflowX === 'scroll') {
+              ignorar = true;
+              break;
+            }
+          }
+          atual = atual.parentElement;
+        }
+      }
+    }
+
+    const toque = e.touches[0];
+    touchSwipeRef.current = {
+      x: toque.clientX,
+      y: toque.clientY,
+      time: Date.now(),
+      ignorar,
+    };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const inicio = touchSwipeRef.current;
+    touchSwipeRef.current = null;
+
+    if (!inicio || inicio.ignorar || loteModal || e.changedTouches.length !== 1) {
+      return;
+    }
+
+    const toque = e.changedTouches[0];
+    const deltaX = toque.clientX - inicio.x;
+    const deltaY = toque.clientY - inicio.y;
+    const duracao = Date.now() - inicio.time;
+
+    if (duracao > 650 || Math.abs(deltaX) < 56 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.35) {
+      return;
+    }
+
+    if (sidebarMobile) {
+      if (deltaX < 0) {
+        setSidebarMobile(false);
+      }
+      return;
+    }
+
+    if (abaAtiva === 'novo') {
+      if (subAbaLote === 'cadastro') {
+        if (deltaX < 0) {
+          setSubAbaLote('historico');
+        } else if (deltaX > 0) {
+          if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+            setSidebarMobile(true);
+          } else {
+            setSidebarDesktop(true);
+          }
+        }
+      } else if (subAbaLote === 'historico' && deltaX > 0) {
+        setSubAbaLote('cadastro');
+      }
+    }
   };
 
   const handleSalvarConfig = async (e: React.FormEvent) => {
@@ -516,7 +601,11 @@ export default function CadastroPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col">
+    <div
+      className="min-h-screen bg-[#F6F4F3] text-[#505859] flex flex-col"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <header className="bg-[#FCFBFB] border-b border-[#E5DFDE] sticky top-0 z-30 no-print">
         <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -658,9 +747,9 @@ export default function CadastroPage() {
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full">
+        <main className="flex-1 min-w-0 max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 w-full">
           {abaAtiva === 'novo' && (
-            <div className="space-y-6">
+            <div className="space-y-6 touch-pan-y overflow-x-hidden">
               <div className="flex items-center gap-1 p-1 bg-[#EDE7E6]/80 border border-[#E5DFDE] rounded-lg w-fit no-print">
                 <button
                   type="button"
@@ -686,27 +775,36 @@ export default function CadastroPage() {
                 </button>
               </div>
 
-              {subAbaLote === 'cadastro' ? (
-                <div className={loteCriado ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'max-w-3xl mx-auto'}>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={subAbaLote}
+                  initial={{ opacity: 0, x: subAbaLote === 'historico' ? 28 : -28 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: subAbaLote === 'historico' ? -28 : 28 }}
+                  transition={{ duration: 0.16, ease: 'easeOut' }}
+                >
+                  {subAbaLote === 'cadastro' ? (
+                <div className={loteCriado ? 'grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6' : 'max-w-3xl mx-auto'}>
                   <div
                     className={`${
                       loteCriado ? 'md:col-span-2' : ''
-                    } bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 no-print`}
+                    } min-w-0 bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6 no-print`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-5 pb-4 border-b border-[#EDE7E6]">
-                      <h2 className="text-lg font-bold text-[#3E4546]">Novo Lote de Esterilização</h2>
-                      <span className="text-xs font-mono tabular-nums text-[#7A8283]">
-                        Próximo código: <strong className="text-[#9E7372]">{proximoCodPrevisto}</strong>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2 mb-4 sm:mb-5 pb-3 sm:pb-4 border-b border-[#EDE7E6]">
+                      <h2 className="text-base sm:text-lg font-bold text-[#3E4546]">Novo Lote de Esterilização</h2>
+                      <span className="text-xs font-mono tabular-nums text-[#7A8283] flex flex-wrap items-center gap-x-1">
+                        <span>Próximo código:</span>
+                        <strong className="text-[#9E7372]">{proximoCodPrevisto}</strong>
                         {turnoCalculado ? (
-                          <span className="font-sans text-[#6E7677] ml-1.5">
+                          <span className="font-sans text-[#6E7677]">
                             · {turnoCalculado.turnoEfetivo === 'manha' ? 'Manhã (01)' : 'Tarde (02)'}
                           </span>
                         ) : null}
                       </span>
                     </div>
 
-                    <form onSubmit={handleCadastrarLote} className="space-y-4">
-                      <div>
+                    <form onSubmit={handleCadastrarLote} className="space-y-3.5 sm:space-y-4">
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Nome do Item / Kit Esterilizado (Opcional)
                         </label>
@@ -715,12 +813,12 @@ export default function CadastroPage() {
                           value={item}
                           onChange={(e) => setItem(e.target.value)}
                           placeholder="Ex: Kit Clínico Cirúrgico 01 (opcional)"
-                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
+                          className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546]"
                         />
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                        <div className="min-w-0">
                           <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                             Data de Esterilização *
                           </label>
@@ -729,11 +827,11 @@ export default function CadastroPage() {
                             value={esterilizacao}
                             onChange={(e) => setEsterilizacao(e.target.value)}
                             required
-                            className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
+                            className="w-full min-w-0 max-w-full px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546]"
                           />
                         </div>
 
-                        <div>
+                        <div className="min-w-0">
                           <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                             Validade (Dias) *
                           </label>
@@ -747,13 +845,13 @@ export default function CadastroPage() {
                               setDiasValidade(val);
                             }}
                             required
-                            className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
+                            className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546] tabular-nums"
                           />
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                        <div className="min-w-0">
                           <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                             Data de Validade Calculada
                           </label>
@@ -761,14 +859,14 @@ export default function CadastroPage() {
                             type="date"
                             value={validade}
                             readOnly
-                            className="w-full px-4 py-2.5 border border-[#E5DFDE] rounded-lg bg-[#F4EFEF] text-[#3E4546] font-semibold"
+                            className="w-full min-w-0 max-w-full px-3 sm:px-4 py-2.5 border border-[#E5DFDE] rounded-lg bg-[#F4EFEF] text-base sm:text-sm text-[#3E4546] font-semibold"
                           />
                           <span className="text-[11px] text-[#7A8283] mt-1 block">
                             Calculada automaticamente (editável via dias)
                           </span>
                         </div>
 
-                        <div>
+                        <div className="min-w-0">
                           <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                             Quantidade de Etiquetas *
                           </label>
@@ -779,12 +877,12 @@ export default function CadastroPage() {
                             value={quantidade}
                             onChange={(e) => setQuantidade(parseInt(e.target.value, 10) || 1)}
                             required
-                            className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
+                            className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546] tabular-nums"
                           />
                         </div>
                       </div>
 
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Responsável Técnico *
                         </label>
@@ -794,14 +892,14 @@ export default function CadastroPage() {
                           onChange={(e) => setResponsavel(e.target.value)}
                           placeholder="Nome do profissional (obrigatório)"
                           required
-                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
+                          className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546]"
                         />
                       </div>
 
                       <button
                         type="submit"
                         disabled={salvando}
-                        className="w-full py-3 px-3 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white font-semibold rounded-lg transition flex items-center justify-center gap-1.5 text-xs sm:text-sm cursor-pointer"
+                        className="w-full py-3 px-4 bg-[#505859] hover:bg-[#3E4546] disabled:opacity-50 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2 text-sm cursor-pointer"
                       >
                         <PlusCircle className="w-[20px] h-[20px] sm:w-[22px] sm:h-[22px] text-[#CDA9A8] shrink-0" />
                         <span>{salvando ? 'Cadastrando...' : 'Cadastrar Lote e Gerar Etiquetas'}</span>
@@ -810,37 +908,37 @@ export default function CadastroPage() {
                   </div>
 
                   {loteCriado && (
-                    <div className="space-y-6 no-print">
-                      <div className="bg-[#F8F3F3] border border-[#CDA9A8]/65 rounded-xl p-5 text-[#3E4546] space-y-3">
-                        <div className="flex items-center space-x-2 font-bold text-[#3E4546]">
+                    <div className="min-w-0 space-y-4 sm:space-y-6 no-print">
+                      <div className="bg-[#F8F3F3] border border-[#CDA9A8]/65 rounded-xl p-4 sm:p-5 text-[#3E4546] space-y-3">
+                        <div className="flex items-center gap-2 font-bold text-sm sm:text-base text-[#3E4546]">
                           <CheckCircle2 className="w-5 h-5 text-[#9E7372] shrink-0" />
-                          <span>Lote {loteCriado.codigo} Cadastrado!</span>
+                          <span className="truncate">Lote {loteCriado.codigo} Cadastrado!</span>
                         </div>
                         <p className="text-xs text-[#6E7677]">
                           {quantidade} etiqueta(s) pronta(s) para impressão ou acesso ao cartão público.
                         </p>
-                        <div className="flex justify-center bg-white rounded-lg p-3 border border-[#E5DFDE] overflow-hidden">
+                        <div className="flex justify-center bg-white rounded-lg p-3 border border-[#E5DFDE] overflow-x-auto max-w-full">
                           <Etiqueta
                             lote={loteCriado}
                             larguraMm={config.larguraMm}
                             alturaMm={config.alturaMm}
                           />
                         </div>
-                        <div className="flex space-x-2">
+                        <div className="grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={() => window.print()}
-                            className="flex-1 py-2.5 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg text-xs flex items-center justify-center space-x-1.5 cursor-pointer whitespace-nowrap transition"
+                            className="py-2.5 px-3 bg-[#505859] hover:bg-[#3E4546] text-white font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap transition"
                           >
-                            <Printer className="w-4 h-4 text-[#CDA9A8]" />
+                            <Printer className="w-4 h-4 text-[#CDA9A8] shrink-0" />
                             <span>Imprimir</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => setLoteModal(loteCriado)}
-                            className="px-3.5 py-2.5 bg-white border border-[#DCD4D3] hover:bg-[#F4EFEF] text-[#505859] font-semibold rounded-lg text-xs flex items-center space-x-1.5 whitespace-nowrap transition cursor-pointer"
+                            className="py-2.5 px-3 bg-white border border-[#DCD4D3] hover:bg-[#F4EFEF] text-[#505859] font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 whitespace-nowrap transition cursor-pointer"
                           >
-                            <Eye className="w-4 h-4 text-[#9E7372]" />
+                            <Eye className="w-4 h-4 text-[#9E7372] shrink-0" />
                             <span>Cartão</span>
                           </button>
                         </div>
@@ -849,68 +947,143 @@ export default function CadastroPage() {
                   )}
                 </div>
               ) : (
-                <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6 no-print">
-                  <h2 className="text-lg font-bold text-[#3E4546] mb-4">Histórico de Lotes Cadastrados</h2>
+                <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6 no-print">
+                  <h2 className="text-base sm:text-lg font-bold text-[#3E4546] mb-3 sm:mb-4">
+                    Histórico de Lotes Cadastrados
+                  </h2>
                   {carregandoHistorico ? (
                     <div className="py-12 text-center text-[#7A8283] text-sm">Carregando histórico...</div>
                   ) : historico.length === 0 ? (
                     <div className="py-12 text-center text-[#7A8283] text-sm">Nenhum lote cadastrado ainda.</div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm text-[#505859]">
-                        <thead className="bg-[#F6F2F2] border-b border-[#E5DFDE] text-xs uppercase text-[#6E7677] font-bold">
-                          <tr>
-                            <th className="p-3">Código / Lote</th>
-                            <th className="p-3">Item</th>
-                            <th className="p-3">Esterilização</th>
-                            <th className="p-3">Validade</th>
-                            <th className="p-3">Responsável</th>
-                            <th className="p-3 text-right">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#EDE7E6]">
-                          {historico.map((l) => (
-                            <tr key={l.codigo} className="hover:bg-[#F9F6F6] transition-colors">
-                              <td className="p-3 font-mono tabular-nums font-bold text-[#3E4546]">
-                                {l.codigo}
-                              </td>
-                              <td className="p-3 font-medium">
-                                {l.item || <span className="text-[#9BA2A3] font-normal italic">—</span>}
-                              </td>
-                              <td className="p-3 tabular-nums">{formatDataBR(l.esterilizacao)}</td>
-                              <td className="p-3 tabular-nums">{formatDataBR(l.validade)}</td>
-                              <td className="p-3 text-[#6E7677]">{l.responsavel}</td>
-                              <td className="p-3 text-right space-x-2 whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setLoteCriado(l);
-                                    setQuantidade(1);
-                                    setSubAbaLote('cadastro');
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                  }}
-                                  className="px-2.5 py-1 bg-[#F4ECEC] hover:bg-[#EBDDDD] text-[#505859] border border-[#E3D3D2] text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
-                                >
-                                  <Printer className="w-3.5 h-3.5 text-[#9E7372]" />
-                                  <span>Reimprimir</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setLoteModal(l)}
-                                  className="px-2.5 py-1 bg-white hover:bg-[#F4EFEF] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
-                                >
-                                  <Eye className="w-3.5 h-3.5 text-[#7A8283]" />
-                                  <span>Cartão</span>
-                                </button>
-                              </td>
+                    <>
+                      <div className="space-y-3 md:hidden">
+                        {historico.map((l) => (
+                          <div
+                            key={l.codigo}
+                            className="rounded-xl border border-[#E5DFDE] bg-white p-3.5 space-y-2.5"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="font-mono tabular-nums font-bold text-sm text-[#3E4546]">
+                                  {l.codigo}
+                                </span>
+                                <p className="text-xs font-medium text-[#505859] truncate mt-0.5">
+                                  {l.item || <span className="text-[#9BA2A3] font-normal italic">Sem descrição</span>}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs text-[#6E7677] bg-[#F8F5F5] rounded-lg p-2.5">
+                              <div>
+                                <span className="block text-[10px] uppercase tracking-wide text-[#8D9596]">
+                                  Esterilização
+                                </span>
+                                <span className="font-semibold text-[#3E4546] tabular-nums">
+                                  {formatDataBR(l.esterilizacao)}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block text-[10px] uppercase tracking-wide text-[#8D9596]">
+                                  Validade
+                                </span>
+                                <span className="font-semibold text-[#9E7372] tabular-nums">
+                                  {formatDataBR(l.validade)}
+                                </span>
+                              </div>
+                              <div className="col-span-2 truncate">
+                                <span className="text-[10px] uppercase tracking-wide text-[#8D9596] mr-1.5">
+                                  Responsável:
+                                </span>
+                                <span className="font-medium text-[#505859]">{l.responsavel}</span>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 pt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLoteCriado(l);
+                                  setQuantidade(1);
+                                  setSubAbaLote('cadastro');
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                className="py-2 px-3 bg-[#F4ECEC] hover:bg-[#EBDDDD] text-[#505859] border border-[#E3D3D2] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Printer className="w-3.5 h-3.5 text-[#9E7372]" />
+                                <span>Reimprimir</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setLoteModal(l)}
+                                className="py-2 px-3 bg-white hover:bg-[#F4EFEF] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded-lg transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-[#7A8283]" />
+                                <span>Cartão</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left text-sm text-[#505859]">
+                          <thead className="bg-[#F6F2F2] border-b border-[#E5DFDE] text-xs uppercase text-[#6E7677] font-bold">
+                            <tr>
+                              <th className="p-3">Código / Lote</th>
+                              <th className="p-3">Item</th>
+                              <th className="p-3">Esterilização</th>
+                              <th className="p-3">Validade</th>
+                              <th className="p-3">Responsável</th>
+                              <th className="p-3 text-right">Ações</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody className="divide-y divide-[#EDE7E6]">
+                            {historico.map((l) => (
+                              <tr key={l.codigo} className="hover:bg-[#F9F6F6] transition-colors">
+                                <td className="p-3 font-mono tabular-nums font-bold text-[#3E4546]">
+                                  {l.codigo}
+                                </td>
+                                <td className="p-3 font-medium">
+                                  {l.item || <span className="text-[#9BA2A3] font-normal italic">—</span>}
+                                </td>
+                                <td className="p-3 tabular-nums">{formatDataBR(l.esterilizacao)}</td>
+                                <td className="p-3 tabular-nums">{formatDataBR(l.validade)}</td>
+                                <td className="p-3 text-[#6E7677]">{l.responsavel}</td>
+                                <td className="p-3 text-right space-x-2 whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setLoteCriado(l);
+                                      setQuantidade(1);
+                                      setSubAbaLote('cadastro');
+                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className="px-2.5 py-1 bg-[#F4ECEC] hover:bg-[#EBDDDD] text-[#505859] border border-[#E3D3D2] text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
+                                  >
+                                    <Printer className="w-3.5 h-3.5 text-[#9E7372]" />
+                                    <span>Reimprimir</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setLoteModal(l)}
+                                    className="px-2.5 py-1 bg-white hover:bg-[#F4EFEF] text-[#505859] border border-[#E5DFDE] text-xs font-semibold rounded transition inline-flex items-center space-x-1 cursor-pointer"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-[#7A8283]" />
+                                    <span>Cartão</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
                   )}
                 </div>
               )}
+                </motion.div>
+              </AnimatePresence>
             </div>
           )}
 
@@ -957,13 +1130,13 @@ export default function CadastroPage() {
               </div>
 
               {subAbaConfig === 'geral' ? (
-                <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
-                  <h2 className="text-lg font-bold text-[#3E4546] mb-4 pb-3 border-b border-[#EDE7E6]">
+                <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6">
+                  <h2 className="text-base sm:text-lg font-bold text-[#3E4546] mb-4 pb-3 border-b border-[#EDE7E6]">
                     Configurações de Impressão e Consultório
                   </h2>
 
-                  <form onSubmit={handleSalvarConfig} className="space-y-4">
-                    <div>
+                  <form onSubmit={handleSalvarConfig} className="space-y-3.5 sm:space-y-4">
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                         Nome do Consultório
                       </label>
@@ -972,12 +1145,12 @@ export default function CadastroPage() {
                         value={config.nomeConsultorio}
                         onChange={(e) => setConfig({ ...config, nomeConsultorio: e.target.value })}
                         required
-                        className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546]"
+                        className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546]"
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Largura da Etiqueta (mm)
                         </label>
@@ -988,10 +1161,10 @@ export default function CadastroPage() {
                           value={config.larguraMm}
                           onChange={(e) => setConfig({ ...config, larguraMm: Number(e.target.value) })}
                           required
-                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
+                          className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546] tabular-nums"
                         />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Altura da Etiqueta (mm)
                         </label>
@@ -1002,7 +1175,7 @@ export default function CadastroPage() {
                           value={config.alturaMm}
                           onChange={(e) => setConfig({ ...config, alturaMm: Number(e.target.value) })}
                           required
-                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-[#3E4546] tabular-nums"
+                          className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988] text-base sm:text-sm text-[#3E4546] tabular-nums"
                         />
                       </div>
                     </div>
@@ -1104,16 +1277,16 @@ export default function CadastroPage() {
                   </form>
                 </div>
               ) : (
-                <div className="space-y-6">
-                  <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
-                    <h2 className="text-lg font-bold text-[#3E4546] mb-1">Cadastrar Novo Usuário</h2>
+                <div className="space-y-4 sm:space-y-6">
+                  <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6">
+                    <h2 className="text-base sm:text-lg font-bold text-[#3E4546] mb-1">Cadastrar Novo Usuário</h2>
                     <p className="text-xs text-[#7A8283] mb-4 pb-4 border-b border-[#EDE7E6]">
                       Crie acessos individuais para dentistas e auxiliares (login simples sem e-mail). A senha padrão inicial é{' '}
                       <span className="font-mono font-semibold text-[#9E7372]">1234</span>.
                     </p>
 
-                    <form onSubmit={handleCadastrarUsuario} className="space-y-4">
-                      <div>
+                    <form onSubmit={handleCadastrarUsuario} className="space-y-3.5 sm:space-y-4">
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Usuário (login) *
                         </label>
@@ -1123,11 +1296,11 @@ export default function CadastroPage() {
                           onChange={(e) => setNovoUsuario(e.target.value)}
                           required
                           placeholder="Ex: fabiana ou auxiliar"
-                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                          className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-base sm:text-sm text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
                         />
                       </div>
 
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Nome Completo (Opcional)
                         </label>
@@ -1136,11 +1309,11 @@ export default function CadastroPage() {
                           value={novoNome}
                           onChange={(e) => setNovoNome(e.target.value)}
                           placeholder="Ex: Dra. Fabiana Bezerra"
-                          className="w-full px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                          className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-white border border-[#DCD4D3] rounded-lg text-base sm:text-sm text-[#3E4546] focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
                         />
                       </div>
 
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-[#505859] mb-1.5">
                           Senha Inicial (padrão: 1234) *
                         </label>
@@ -1151,7 +1324,7 @@ export default function CadastroPage() {
                             onChange={(e) => setNovaSenha(e.target.value)}
                             required
                             minLength={4}
-                            className="w-full px-4 py-2.5 pr-10 bg-white border border-[#DCD4D3] rounded-lg text-[#3E4546] font-mono focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
+                            className="w-full min-w-0 px-3 sm:px-4 py-2.5 pr-10 bg-white border border-[#DCD4D3] rounded-lg text-base sm:text-sm text-[#3E4546] font-mono focus:outline-none focus:ring-2 focus:ring-[#CDA9A8]/55 focus:border-[#B58988]"
                           />
                           <button
                             type="button"
@@ -1176,14 +1349,14 @@ export default function CadastroPage() {
                   </div>
 
                   {usuariosLista.length > 0 && (
-                    <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-6">
+                    <div className="bg-[#FCFBFB] rounded-xl border border-[#E5DFDE] p-4 sm:p-6">
                       <h3 className="text-sm font-bold text-[#3E4546] mb-3">Usuários Cadastrados</h3>
                       <div className="divide-y divide-[#EDE7E6]">
                         {usuariosLista.map((u) => (
                           <div key={u.usuario} className="py-2.5 flex items-center justify-between text-sm">
-                            <div>
-                              <span className="font-semibold text-[#3E4546]">{u.nome}</span>
-                              <span className="text-[#CDA9A8] mx-2">·</span>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+                              <span className="font-semibold text-[#3E4546] break-words">{u.nome}</span>
+                              <span className="text-[#CDA9A8]">·</span>
                               <span className="font-mono text-xs text-[#6E7677]">{u.usuario}</span>
                             </div>
                           </div>
